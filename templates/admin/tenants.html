@@ -1,28 +1,36 @@
 {% extends "base.html" %}
 {% block title %}Oficinas - Administración{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<header class="page-header">
     <div>
-        <h2 class="mb-0">Oficinas</h2>
-        <small class="text-muted">Administración global de tenants</small>
+        <span class="eyebrow">Administración global</span>
+        <h1>Oficinas</h1>
+        <p>Crea y gestiona los espacios independientes de cada empresa.</p>
     </div>
-</div>
+</header>
 
-<div class="card mb-4">
-    <div class="card-header fw-semibold">Nueva oficina</div>
+<div class="card surface-card mb-4">
+    <div class="card-header surface-card-header">
+        <div><span class="eyebrow">Alta de tenant</span><h2>Nueva oficina</h2></div>
+        <span class="header-icon"><i class="bi bi-building-add"></i></span>
+    </div>
     <div class="card-body">
-        <form id="newTenantForm" class="row g-2">
-            <div class="col-md-3"><input class="form-control" name="name" required placeholder="Nombre"></div>
-            <div class="col-md-2"><input class="form-control" name="subdomain" required pattern="[a-z0-9-]+" placeholder="subdominio"></div>
-            <div class="col-md-3"><input class="form-control" name="admin_email" type="email" placeholder="Email admin inicial"></div>
-            <div class="col-md-2"><input class="form-control" name="admin_password" type="password" minlength="8" placeholder="Contraseña"></div>
-            <div class="col-md-2"><button class="btn btn-primary w-100">Crear</button></div>
+        <form id="newTenantForm" class="row g-3 align-items-end">
+            <div class="col-md-3"><label class="form-label">Nombre comercial</label><input class="form-control" name="name" required placeholder="Oficina Centro"></div>
+            <div class="col-md-2"><label class="form-label">Identificador</label><input class="form-control" name="subdomain" required pattern="[a-z0-9-]+" placeholder="oficina-centro"></div>
+            <div class="col-md-3"><label class="form-label">Administrador inicial</label><input class="form-control" name="admin_email" type="email" placeholder="admin@empresa.com"></div>
+            <div class="col-md-2"><label class="form-label">Contraseña temporal</label><input class="form-control" name="admin_password" type="password" minlength="8" placeholder="Mínimo 8 caracteres"></div>
+            <div class="col-md-2"><button class="btn btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Crear oficina</button></div>
         </form>
         <div id="tenantFormMessage" class="small mt-2"></div>
     </div>
 </div>
 
-<div class="card">
+<div class="card surface-card">
+    <div class="card-header surface-card-header">
+        <div><span class="eyebrow">Directorio</span><h2>Oficinas registradas</h2></div>
+        <span class="period-badge">{{ tenants|length }} en total</span>
+    </div>
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
             <thead><tr><th>Nombre</th><th>Subdominio</th><th>Estado</th><th>Creado</th><th></th></tr></thead>

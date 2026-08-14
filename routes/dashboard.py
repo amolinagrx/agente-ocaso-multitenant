@@ -6,6 +6,11 @@ from dateutil.relativedelta import relativedelta
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
+MESES_ES = ('Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre')
+MESES_CORTOS_ES = ('ene', 'feb', 'mar', 'abr', 'may', 'jun',
+                   'jul', 'ago', 'sep', 'oct', 'nov', 'dic')
+
 
 @dashboard_bp.route('/')
 @login_required
@@ -51,7 +56,7 @@ def index():
     for i in range(11, -1, -1):
         mes_inicio = (hoy.replace(day=1) - relativedelta(months=i))
         mes_fin = (mes_inicio + relativedelta(months=1)) - relativedelta(days=1)
-        mes_label = mes_inicio.strftime('%b %y')
+        mes_label = f'{MESES_CORTOS_ES[mes_inicio.month - 1]} {mes_inicio.strftime("%y")}'
 
         nuevas_mes = Poliza.query.filter(
             Poliza.fecha_efecto >= mes_inicio,
@@ -98,4 +103,4 @@ def index():
                            monthly_data=monthly_data,
                            ramos_data=ramos_data,
                            top_clientes=top_clientes,
-                           mes=hoy.strftime('%B %Y'))
+                           mes=f'{MESES_ES[hoy.month - 1]} {hoy.year}')

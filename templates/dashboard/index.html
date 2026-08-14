@@ -1,121 +1,181 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - Ocaso{% endblock %}
+{% block title %}Dashboard · Ocaso Gestión{% endblock %}
 {% block content %}
 
-<h4 class="mb-3"><i class="bi bi-speedometer2 me-2" style="color:var(--ocaso-blue)"></i>Dashboard - {{ mes }}</h4>
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Visión general</span>
+        <h1>Buenos días, {{ current_user.username.split('@')[0]|capitalize }}</h1>
+        <p>Este es el pulso de tu oficina en {{ mes|lower }}.</p>
+    </div>
+    <div class="page-header-meta">
+        <span><i class="bi bi-calendar3"></i>{{ mes }}</span>
+    </div>
+</header>
 
-<!-- KPIs -->
-<div class="row g-3 mb-4">
-    <div class="col-6 col-md-3">
-        <div class="card border-primary h-100">
-            <div class="card-body text-center">
-                <h3 class="text-primary mb-0">{{ polizas_ocaso_mes }}</h3>
-                <small class="text-muted">Polizas Ocaso este mes</small>
+<section class="row g-3 mb-4" aria-label="Indicadores principales">
+    <div class="col-6 col-xl-3">
+        <article class="metric-card metric-primary">
+            <div class="metric-top">
+                <span class="metric-icon"><i class="bi bi-file-earmark-check"></i></span>
+                <span class="metric-trend"><i class="bi bi-stars"></i> Mes actual</span>
             </div>
-        </div>
+            <strong class="metric-value">{{ polizas_ocaso_mes }}</strong>
+            <span class="metric-label">Pólizas Ocaso</span>
+        </article>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card border-secondary h-100">
-            <div class="card-body text-center">
-                <h3 class="text-secondary mb-0">{{ polizas_otras_mes }}</h3>
-                <small class="text-muted">Otras comp. este mes</small>
+    <div class="col-6 col-xl-3">
+        <article class="metric-card metric-violet">
+            <div class="metric-top">
+                <span class="metric-icon"><i class="bi bi-layers"></i></span>
+                <span class="metric-trend">Otras compañías</span>
             </div>
-        </div>
+            <strong class="metric-value">{{ polizas_otras_mes }}</strong>
+            <span class="metric-label">Pólizas externas</span>
+        </article>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card border-success h-100">
-            <div class="card-body text-center">
-                <h3 class="text-success mb-0">{{ "%.0f"|format(primas_nuevas) }}€</h3>
-                <small class="text-muted">Cobrado este mes</small>
+    <div class="col-6 col-xl-3">
+        <article class="metric-card metric-success">
+            <div class="metric-top">
+                <span class="metric-icon"><i class="bi bi-wallet2"></i></span>
+                <span class="metric-trend">Cobrado</span>
             </div>
-        </div>
+            <strong class="metric-value">{{ "%.0f"|format(primas_nuevas) }}<small>€</small></strong>
+            <span class="metric-label">Ingresos del mes</span>
+        </article>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card border-danger h-100">
-            <div class="card-body text-center">
-                <h3 class="text-danger mb-0">{{ "%.0f"|format(devueltos) }}€</h3>
-                <small class="text-muted">Devuelto ({{ num_devueltos }} recibos)</small>
+    <div class="col-6 col-xl-3">
+        <article class="metric-card metric-danger">
+            <div class="metric-top">
+                <span class="metric-icon"><i class="bi bi-arrow-return-left"></i></span>
+                <span class="metric-trend">{{ num_devueltos }} recibos</span>
             </div>
-        </div>
+            <strong class="metric-value">{{ "%.0f"|format(devueltos) }}<small>€</small></strong>
+            <span class="metric-label">Importe devuelto</span>
+        </article>
     </div>
-</div>
+</section>
 
-<div class="row g-3">
-    <!-- Chart -->
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header bg-white"><strong>Evolución mensual (12 meses)</strong></div>
-            <div class="card-body">
+<div class="row g-3 dashboard-grid">
+    <div class="col-xl-8">
+        <section class="card surface-card h-100">
+            <div class="card-header surface-card-header">
+                <div>
+                    <span class="eyebrow">Rendimiento</span>
+                    <h2>Evolución mensual</h2>
+                </div>
+                <span class="period-badge">Últimos 12 meses</span>
+            </div>
+            <div class="card-body chart-body">
                 <canvas id="evolucionChart" height="220"></canvas>
             </div>
-        </div>
+        </section>
     </div>
 
-    <!-- Por ramos -->
-    <div class="col-md-4">
-        <div class="card h-100">
-            <div class="card-header bg-white"><strong>Primas por ramo</strong></div>
-            <div class="card-body">
-                <table class="table table-sm">
-                    <tbody>
-                {% for ramo, cantidad, total in ramos_data %}
-                <tr>
-                    <td><span class="badge bg-secondary">{{ ramo.title() }}</span></td>
-                    <td class="text-end"><strong>{{ "%.0f"|format(total) }}€</strong></td>
-                </tr>
-                        {% else %}
-                        <tr><td colspan="2" class="text-muted text-center">Sin datos</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+    <div class="col-xl-4">
+        <section class="card surface-card h-100">
+            <div class="card-header surface-card-header">
+                <div>
+                    <span class="eyebrow">Distribución</span>
+                    <h2>Primas por ramo</h2>
+                </div>
+                <span class="header-icon"><i class="bi bi-pie-chart"></i></span>
             </div>
+            <div class="card-body p-0">
+                <div class="branch-list">
+                    {% for ramo, cantidad, total in ramos_data %}
+                    <div class="branch-row">
+                        <span class="branch-dot" style="--row-index:{{ loop.index0 }}"></span>
+                        <div class="branch-copy">
+                            <strong>{{ ramo.title() }}</strong>
+                            <small>{{ cantidad }} póliza{{ 's' if cantidad != 1 }}</small>
+                        </div>
+                        <span class="branch-value">{{ "%.0f"|format(total) }}€</span>
+                    </div>
+                    {% else %}
+                    <div class="empty-state compact">
+                        <i class="bi bi-bar-chart"></i>
+                        <p>Aún no hay datos de primas.</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<section class="card surface-card mt-3">
+    <div class="card-header surface-card-header">
+        <div>
+            <span class="eyebrow">Cartera</span>
+            <h2>Clientes con mayor volumen</h2>
+        </div>
+        <span class="period-badge">Top 10</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table modern-table align-middle mb-0">
+                <thead><tr><th>Cliente</th><th class="text-end">Volumen total</th></tr></thead>
+                <tbody>
+                    {% for nombre, total in top_clientes %}
+                    <tr>
+                        <td><span class="client-avatar">{{ nombre[:1]|upper }}</span><strong>{{ nombre }}</strong></td>
+                        <td class="text-end"><span class="amount-value">{{ "%.0f"|format(total) }}€</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="2"><div class="empty-state compact"><i class="bi bi-people"></i><p>Aún no hay clientes con volumen.</p></div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
-</div>
+</section>
 
-<!-- Top clientes -->
-<div class="card mt-3">
-    <div class="card-header bg-white"><strong>Top 10 clientes por volumen</strong></div>
-    <div class="card-body p-0">
-        <table class="table table-sm table-striped mb-0">
-            <tbody>
-                {% for nombre, total in top_clientes %}
-                <tr>
-                    <td>{{ nombre }}</td>
-                    <td class="text-end fw-bold">{{ "%.0f"|format(total) }}€</td>
-                </tr>
-                {% else %}
-                <tr><td colspan="2" class="text-muted text-center py-3">Sin datos</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
+{% endblock %}
+{% block scripts %}
 <script>
 const ctx = document.getElementById('evolucionChart').getContext('2d');
+const styles = getComputedStyle(document.documentElement);
+const primaryColor = styles.getPropertyValue('--brand-primary').trim() || '#2563eb';
+const chartText = styles.getPropertyValue('--text-muted').trim() || '#64748b';
+const chartGrid = styles.getPropertyValue('--border-subtle').trim() || '#e2e8f0';
 new Chart(ctx, {
     type: 'bar',
     data: {
         labels: [{% for d in monthly_data %}'{{ d.label }}'{% if not loop.last %},{% endif %}{% endfor %}],
         datasets: [{
-            label: 'Polizas nuevas',
+            label: 'Pólizas nuevas',
             data: [{% for d in monthly_data %}{{ d.nuevas }}{% if not loop.last %},{% endif %}{% endfor %}],
-            backgroundColor: 'var(--ocaso-blue)',
+            backgroundColor: primaryColor,
+            borderRadius: 7,
+            borderSkipped: false,
+            barPercentage: .7,
             yAxisID: 'y'
         }, {
             label: 'Cobrado (€)',
             data: [{% for d in monthly_data %}{{ d.cobrados }}{% if not loop.last %},{% endif %}{% endfor %}],
-            backgroundColor: '#25D366',
+            backgroundColor: '#14b8a6',
+            borderRadius: 7,
+            borderSkipped: false,
+            barPercentage: .7,
             yAxisID: 'y1'
         }]
     },
     options: {
         responsive: true,
-        plugins: { legend: { position: 'bottom' } },
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { color: chartText, usePointStyle: true, pointStyle: 'circle', padding: 22, font: { family: 'DM Sans', size: 12 } }
+            },
+            tooltip: { padding: 12, cornerRadius: 10, titleFont: { family: 'DM Sans' }, bodyFont: { family: 'DM Sans' } }
+        },
         scales: {
-            y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Polizas' }, ticks: { stepSize: 1 } },
-            y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Euros' }, grid: { drawOnChartArea: false } }
+            x: { grid: { display: false }, ticks: { color: chartText, font: { family: 'DM Sans' } }, border: { display: false } },
+            y: { beginAtZero: true, position: 'left', grid: { color: chartGrid }, ticks: { color: chartText, stepSize: 1, font: { family: 'DM Sans' } }, border: { display: false } },
+            y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: chartText, font: { family: 'DM Sans' } }, border: { display: false } }
         }
     }
 });
