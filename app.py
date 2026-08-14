@@ -1,30 +1,45 @@
 import os
 import secrets
-from flask import Flask, session
-from flask_login import LoginManager
+from flask import Flask, abort, session
+from flask_login import LoginManager, current_user, logout_user
 from models import db, User
 
 
-def create_app():
+def create_app(run_startup_tasks=True):
     app = Flask(__name__)
 
     @app.context_processor
     def inject_globals():
         from models import COMPANIAS_ESPANA, RAMOS_ESPANA
+        import json
+        from services.tenant_context import get_current_tenant
         version = '1.0.0'
         try:
             with open(os.path.join(os.path.dirname(__file__), 'VERSION')) as f:
                 version = f.read().strip()
         except Exception:
             pass
-        return {'companias': COMPANIAS_ESPANA, 'ramos_list': RAMOS_ESPANA,
-                'today': __import__('datetime').date.today(), 'app_version': version}
+        tenant = get_current_tenant()
+        try:
+            tenant_config = json.loads(tenant.config_json or '{}') if tenant else {}
+        except (TypeError, json.JSONDecodeError):
+            tenant_config = {}
+        return {
+            'companias': COMPANIAS_ESPANA,
+            'ramos_list': RAMOS_ESPANA,
+            'today': __import__('datetime').date.today(),
+            'app_version': version,
+            'current_tenant': tenant,
+            'tenant_config': tenant_config,
+        }
 
     @app.route('/')
     def root():
         from flask import redirect, url_for
         from flask_login import current_user
         if current_user.is_authenticated:
+            if current_user.is_super_admin:
+                return redirect(url_for('admin.list_tenants'))
             return redirect(url_for('dashboard.index'))
         return redirect(url_for('auth.login'))
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
@@ -32,7 +47,9 @@ def create_app():
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE'] = os.environ.get('OCASO_ENV') != 'development'
     data_dir = os.environ.get('DATA_DIR', '/data')
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{data_dir}/ocaso.db'
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+        'DATABASE_URL', f'sqlite:///{data_dir}/ocaso.db'
+    )
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['UPLOAD_FOLDER'] = f'{data_dir}/uploads'
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -49,13 +66,60 @@ def create_app():
 
     db.init_app(app)
 
+    # Importing registers SQLAlchemy's mandatory tenant guards.
+    from services import tenant_isolation  # noqa: F401
+    from middleware import init_tenant_middleware
+    from services.tenant_context import (
+        TenantContextMissing,
+        TenantIsolationViolation,
+        get_current_tenant_id,
+    )
+    init_tenant_middleware(app)
+
     login_manager = LoginManager()
     login_manager.login_view = 'auth.login'
     login_manager.init_app(app)
 
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        from sqlalchemy import select
+
+        request_tenant_id = get_current_tenant_id()
+        session_tenant_id = session.get('tenant_id')
+        if session_tenant_id:
+            if str(session_tenant_id) != str(request_tenant_id):
+                return None
+            return db.session.get(User, int(user_id))
+
+        statement = (
+            select(User)
+            .where(User.id == int(user_id), User.tenant_id.is_(None), User.is_super_admin.is_(True))
+            .execution_options(tenant_bypass=True)
+        )
+        return db.session.execute(statement).scalar_one_or_none()
+
+    @app.before_request
+    def validate_authenticated_tenant():
+        if not current_user.is_authenticated:
+            return None
+        tenant_id = get_current_tenant_id()
+        if current_user.is_super_admin:
+            return None
+        if not tenant_id or str(current_user.tenant_id) != tenant_id:
+            logout_user()
+            session.clear()
+            abort(404)
+        if str(session.get('tenant_id')) != tenant_id:
+            logout_user()
+            session.clear()
+            abort(404)
+        return None
+
+    @app.errorhandler(TenantContextMissing)
+    @app.errorhandler(TenantIsolationViolation)
+    def handle_tenant_security_error(error):
+        app.logger.warning('Operación rechazada por aislamiento: %s', type(error).__name__)
+        return ('Solicitud no disponible', 404)
 
     from routes.auth import auth_bp
     from routes.recibos import recibos_bp
@@ -77,6 +141,7 @@ def create_app():
     from routes.cartera import cartera_bp
     from routes.api_externa import api_externa_bp
     from routes.api import api_bp
+    from routes.admin import admin_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(recibos_bp, url_prefix='/recibos')
@@ -98,142 +163,32 @@ def create_app():
     app.register_blueprint(cartera_bp, url_prefix='/cartera')
     app.register_blueprint(api_externa_bp)
     app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(admin_bp, url_prefix='/admin')
 
-    with app.app_context():
-        db.create_all()
-        _migrar_schema()
-        _seed_user(app)
-        _auto_seed_if_empty(app)
+    if run_startup_tasks:
+        with app.app_context():
+            _prepare_database()
 
     return app
 
 
-def _seed_user(app):
-    username = os.environ.get('OCASO_USER', 'admin')
-    password = os.environ.get('OCASO_PASS', 'ocaso2025')
-    if not User.query.filter_by(username=username).first():
-        user = User(username=username, password='pending', nombre='Administrador', is_admin=True,
-                     permisos='{}', activo=True)
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-        print(f'User created: {username}')
-    else:
-        user = User.query.filter_by(username=username).first()
-        if not user.is_admin and user.username == 'admin':
-            user.is_admin = True
-            user.nombre = user.nombre or 'Administrador'
-            db.session.commit()
+def _prepare_database():
+    """Create a fresh schema or reject a legacy database before serving traffic."""
+    from sqlalchemy import inspect
 
-
-def _auto_seed_if_empty(app):
-    """Only seed in development mode."""
-    if os.environ.get('OCASO_ENV', 'production') != 'development':
+    inspector = inspect(db.engine)
+    tables = set(inspector.get_table_names())
+    if not tables:
+        db.create_all()
         return
-    from models import Cliente
-    if Cliente.query.count() == 0:
-        print('Empty database detected. Running seed data...')
-        try:
-            from seed import run_seed
-            run_seed()
-            print('Seed data loaded successfully.')
-        except Exception as e:
-            print(f'Seed error (non-fatal): {e}')
-
-
-def _migrar_schema():
-    """Add missing columns to existing tables without data loss."""
-    import sqlite3
-    from flask import current_app
-
-    db_path = current_app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("PRAGMA table_info(users)")
-        user_cols = {row[1] for row in cursor.fetchall()}
-
-        for col, col_type in [
-            ('nombre', 'VARCHAR(200)'),
-            ('is_admin', 'BOOLEAN DEFAULT 0'),
-            ('activo', 'BOOLEAN DEFAULT 1'),
-            ('permisos', 'TEXT DEFAULT \'{}\''),
-            ('totp_secret', 'VARCHAR(64)'),
-            ('totp_enabled', 'BOOLEAN DEFAULT 0'),
-            ('password_temporal', 'BOOLEAN DEFAULT 0'),
-        ]:
-            if col not in user_cols:
-                cursor.execute(f'ALTER TABLE users ADD COLUMN {col} {col_type}')
-                print(f'Migracion: anadida columna {col} a users')
-
-        cursor.execute("PRAGMA table_info(clientes)")
-        cliente_cols = {row[1] for row in cursor.fetchall()}
-        for col, col_type in [
-            ('codigo_postal', 'VARCHAR(10)'),
-            ('poblacion', 'VARCHAR(100)'),
-            ('provincia', 'VARCHAR(100)'),
-            ('portal_activo', 'BOOLEAN DEFAULT 0'),
-            ('portal_password', 'VARCHAR(256)'),
-            ('portal_token', 'VARCHAR(100)'),
-            ('portal_password_temporal', 'BOOLEAN DEFAULT 1'),
-        ]:
-            if col not in cliente_cols:
-                cursor.execute(f'ALTER TABLE clientes ADD COLUMN {col} {col_type}')
-                print(f'Migracion: anadida columna {col} a clientes')
-
-        cursor.execute("PRAGMA table_info(polizas)")
-        cols = {row[1] for row in cursor.fetchall()}
-
-        migrations = [
-            ('numero_cuenta', 'VARCHAR(34)'),
-            ('fecha_baja', 'DATE'),
-            ('unidades', 'INTEGER DEFAULT 1'),
-            ('detalles', 'TEXT'),
-            ('frecuencia_pago', 'VARCHAR(20) DEFAULT \'anual\''),
-            ('deleted_at', 'DATETIME'),
-        ]
-
-        for col, col_type in migrations:
-            if col not in cols:
-                try:
-                    cursor.execute(f'ALTER TABLE polizas ADD COLUMN {col} {col_type}')
-                    print(f'Migracion: anadida columna {col} a polizas')
-                except Exception as e:
-                    print(f'Migracion polizas.{col}: {e}')
-
-        cursor.execute("PRAGMA table_info(recibos)")
-        rec_cols = {row[1] for row in cursor.fetchall()}
-        if 'deleted_at' not in rec_cols:
-            try:
-                cursor.execute("ALTER TABLE recibos ADD COLUMN deleted_at DATETIME")
-                print('Migracion: anadida columna deleted_at a recibos')
-            except Exception as e:
-                print(f'Migracion recibos.deleted_at: {e}')
-
-        cursor.execute("PRAGMA table_info(documentos_cliente)")
-        doc_cols = {row[1] for row in cursor.fetchall()}
-        if 'drive_id' not in doc_cols:
-            try:
-                cursor.execute("ALTER TABLE documentos_cliente ADD COLUMN drive_id VARCHAR(200)")
-                print('Migracion: anadida columna drive_id a documentos_cliente')
-            except Exception as e:
-                print(f'Migracion drive_id: {e}')
-
-        # Ensure documentos_siniestro has all columns
-        try:
-            cursor.execute("PRAGMA table_info(documentos_siniestro)")
-            ds_cols = {row[1] for row in cursor.fetchall()}
-            if 'drive_id' not in ds_cols:
-                cursor.execute("ALTER TABLE documentos_siniestro ADD COLUMN drive_id VARCHAR(200)")
-                print('Migracion: anadida columna drive_id a documentos_siniestro')
-        except Exception:
-            pass  # Table might not exist yet, db.create_all handles it
-
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f'Error en migracion (no critico): {e}')
+    if 'users' in tables:
+        user_columns = {column['name'] for column in inspector.get_columns('users')}
+        if 'tenant_id' not in user_columns:
+            raise RuntimeError(
+                'Esquema single-tenant detectado. Ejecuta '
+                '`python scripts/migrate_to_multitenant.py` antes de arrancar.'
+            )
+    db.create_all()
 
 
 if __name__ == '__main__':
