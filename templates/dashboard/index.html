@@ -9,7 +9,27 @@
         <p>Este es el pulso de tu oficina en {{ mes|lower }}.</p>
     </div>
     <div class="page-header-meta">
-        <span><i class="bi bi-calendar3"></i>{{ mes }}</span>
+        <div class="dropdown month-picker">
+            <button class="month-picker-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                <i class="bi bi-calendar3"></i>{{ mes }}
+                <i class="bi bi-chevron-down"></i>
+            </button>
+            <form method="GET" action="{{ url_for('dashboard.index') }}" class="dropdown-menu dropdown-menu-end p-3 month-picker-menu">
+                <label class="form-label" for="mes">Mes</label>
+                <select id="mes" name="mes" class="form-select form-select-sm mb-2">
+                    {% for i in range(1, 13) %}
+                    <option value="{{ i }}" {% if i == selected_mes %}selected{% endif %}>{{ meses_list[i - 1] }}</option>
+                    {% endfor %}
+                </select>
+                <label class="form-label" for="anio">Año</label>
+                <select id="anio" name="anio" class="form-select form-select-sm mb-3">
+                    {% for a in anios %}
+                    <option value="{{ a }}" {% if a == selected_anio %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary btn-sm w-100" style="background:var(--ocaso-blue)">Ver dashboard</button>
+            </form>
+        </div>
     </div>
 </header>
 

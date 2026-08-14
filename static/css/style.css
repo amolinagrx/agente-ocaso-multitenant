@@ -1019,6 +1019,22 @@ a:hover { color: var(--ocaso-blue-light); }
     font-size: .72rem;
     font-weight: 600;
 }
+.month-picker-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 9px;
+    font-size: .72rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.month-picker-toggle:hover { color: var(--brand-primary); border-color: var(--brand-primary); }
+.month-picker-toggle i:first-child { color: var(--brand-primary); }
+.month-picker-menu { min-width: 220px; }
 
 .card {
     background: var(--surface);

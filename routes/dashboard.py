@@ -16,7 +16,18 @@ MESES_CORTOS_ES = ('ene', 'feb', 'mar', 'abr', 'may', 'jun',
 @login_required
 def index():
     hoy = date.today()
-    inicio_mes = hoy.replace(day=1)
+
+    # Mes seleccionado (por defecto, el actual)
+    anio_param = request.args.get('anio', type=int)
+    mes_param = request.args.get('mes', type=int)
+    try:
+        selected = date(anio_param, mes_param, 1) if (
+            anio_param and mes_param and 1 <= mes_param <= 12
+        ) else hoy.replace(day=1)
+    except ValueError:
+        selected = hoy.replace(day=1)
+
+    inicio_mes = selected
     fin_mes = (inicio_mes + relativedelta(months=1)) - relativedelta(days=1)
 
     # KPIs del mes
@@ -54,7 +65,7 @@ def index():
     # Monthly evolution (last 12 months)
     monthly_data = []
     for i in range(11, -1, -1):
-        mes_inicio = (hoy.replace(day=1) - relativedelta(months=i))
+        mes_inicio = (inicio_mes - relativedelta(months=i))
         mes_fin = (mes_inicio + relativedelta(months=1)) - relativedelta(days=1)
         mes_label = f'{MESES_CORTOS_ES[mes_inicio.month - 1]} {mes_inicio.strftime("%y")}'
 
@@ -90,6 +101,8 @@ def index():
         db.text('total DESC')
     ).limit(10).all()
 
+    anios = list(range(hoy.year - 3, hoy.year + 1))
+
     return render_template('dashboard/index.html',
                            primas_nuevas=round(primas_nuevas, 2),
                            num_recibos_cobrados=num_recibos_cobrados,
@@ -103,4 +116,8 @@ def index():
                            monthly_data=monthly_data,
                            ramos_data=ramos_data,
                            top_clientes=top_clientes,
-                           mes=f'{MESES_ES[hoy.month - 1]} {hoy.year}')
+                           mes=f'{MESES_ES[inicio_mes.month - 1]} {inicio_mes.year}',
+                           meses_list=MESES_ES,
+                           selected_mes=inicio_mes.month,
+                           selected_anio=inicio_mes.year,
+                           anios=anios)
