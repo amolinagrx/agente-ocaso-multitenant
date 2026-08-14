@@ -8,6 +8,7 @@ from services.tenant_context import tenant_context
 @pytest.fixture()
 def app(tmp_path, monkeypatch):
     monkeypatch.setenv('DATA_DIR', str(tmp_path))
+    monkeypatch.setenv('DATABASE_URL', f'sqlite:///{tmp_path}/test.db')
     monkeypatch.setenv('SECRET_KEY', 'test-secret-key')
     monkeypatch.setenv('OCASO_ENV', 'development')
     monkeypatch.setenv('TENANT_RESOLUTION_METHOD', 'path')
