@@ -18,6 +18,7 @@ COPY . .
 RUN mkdir -p /data/uploads
 
 ENV PYTHONUNBUFFERED=1
-EXPOSE 5050
+ENV PORT=5050
+EXPOSE ${PORT}
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5050", "--workers", "1", "--threads", "8", "--timeout", "120", "app:create_app()"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers 1 --threads 8 --timeout 120 app:create_app()"]

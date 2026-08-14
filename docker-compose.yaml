@@ -3,10 +3,11 @@ services:
     build: .
     container_name: ocaso-gestion
     ports:
-      - "5050:5050"
+      - "${PORT:-5050}:${PORT:-5050}"
     volumes:
       - ocaso_data:/data
     environment:
+      - PORT=${PORT:-5050}
       - OCASO_ENV=${OCASO_ENV:-production}
       - SECRET_KEY=${SECRET_KEY:?Define SECRET_KEY en .env}
       - DATABASE_URL=${DATABASE_URL:-sqlite:////data/ocaso.db}
@@ -24,7 +25,7 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - GOOGLE_DRIVE_ENABLED=${GOOGLE_DRIVE_ENABLED:-0}
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/v1/health', timeout=3)"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT:-5050}/v1/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3

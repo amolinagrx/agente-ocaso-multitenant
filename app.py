@@ -202,4 +202,5 @@ def _prepare_database():
 if __name__ == '__main__':
     app = create_app()
     debug = os.environ.get('OCASO_ENV', 'production') == 'development'
-    app.run(host='0.0.0.0', port=5050, debug=debug)
+    port = int(os.environ.get('PORT', '5050'))
+    app.run(host='0.0.0.0', port=port, debug=debug)
