@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Oficinas - Administración{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="mb-0">Oficinas</h2>
+        <small class="text-muted">Administración global de tenants</small>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header fw-semibold">Nueva oficina</div>
+    <div class="card-body">
+        <form id="newTenantForm" class="row g-2">
+            <div class="col-md-3"><input class="form-control" name="name" required placeholder="Nombre"></div>
+            <div class="col-md-2"><input class="form-control" name="subdomain" required pattern="[a-z0-9-]+" placeholder="subdominio"></div>
+            <div class="col-md-3"><input class="form-control" name="admin_email" type="email" placeholder="Email admin inicial"></div>
+            <div class="col-md-2"><input class="form-control" name="admin_password" type="password" minlength="8" placeholder="Contraseña"></div>
+            <div class="col-md-2"><button class="btn btn-primary w-100">Crear</button></div>
+        </form>
+        <div id="tenantFormMessage" class="small mt-2"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>Nombre</th><th>Subdominio</th><th>Estado</th><th>Creado</th><th></th></tr></thead>
+            <tbody>
+            {% for tenant in tenants %}
+            <tr>
+                <td>{{ tenant.name }}</td>
+                <td><code>{{ tenant.subdomain }}</code></td>
+                <td><span class="badge bg-{{ 'success' if tenant.active else 'secondary' }}">{{ 'Activo' if tenant.active else 'Inactivo' }}</span></td>
+                <td>{{ tenant.created_at.strftime('%d/%m/%Y') if tenant.created_at else '-' }}</td>
+                <td class="text-end">
+                    {% if tenant.active %}
+                    <form method="POST" action="{{ url_for('admin.switch_tenant', tenant_id=tenant.id) }}" class="d-inline">
+                        <button class="btn btn-sm btn-outline-primary">Abrir</button>
+                    </form>
+                    {% endif %}
+                    <button class="btn btn-sm btn-outline-secondary toggle-tenant" data-id="{{ tenant.id }}" data-active="{{ 'false' if tenant.active else 'true' }}">
+                        {{ 'Desactivar' if tenant.active else 'Activar' }}
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.getElementById('newTenantForm').addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const response = await fetch('{{ url_for('admin.create_tenant') }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(Object.fromEntries(new FormData(this)))
+    });
+    if (response.ok) window.location.reload();
+    else document.getElementById('tenantFormMessage').textContent = 'No se pudo crear la oficina.';
+});
+document.querySelectorAll('.toggle-tenant').forEach(function (button) {
+    button.addEventListener('click', async function () {
+        const response = await fetch('{{ url_for('admin.list_tenants') }}/' + this.dataset.id, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({active: this.dataset.active === 'true'})
+        });
+        if (response.ok) window.location.reload();
+    });
+});
+</script>
+{% endblock %}

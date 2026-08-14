@@ -23,14 +23,14 @@
 <body>
 <nav class="portal-nav navbar navbar-dark px-3 py-2">
     <div class="container-fluid">
-        <a class="navbar-brand fw-bold" href="/portal/dashboard">OCASO Clientes</a>
+        <a class="navbar-brand fw-bold" href="{{ url_for('portal.dashboard') }}">OCASO Clientes</a>
         <div class="d-flex gap-2">
-            <a href="/portal/dashboard" class="nav-link d-none d-sm-inline">Inicio</a>
-            <a href="/portal/polizas" class="nav-link d-none d-sm-inline">Polizas</a>
-            <a href="/portal/siniestros" class="nav-link d-none d-sm-inline">Siniestros</a>
-            <a href="/portal/recibos" class="nav-link d-none d-sm-inline">Recibos</a>
-            <a href="/portal/documentos" class="nav-link d-none d-sm-inline">Documentos</a>
-            <a href="/portal/logout" class="nav-link"><i class="bi bi-box-arrow-right"></i> Salir</a>
+            <a href="{{ url_for('portal.dashboard') }}" class="nav-link d-none d-sm-inline">Inicio</a>
+            <a href="{{ url_for('portal.polizas') }}" class="nav-link d-none d-sm-inline">Polizas</a>
+            <a href="{{ url_for('portal.siniestros') }}" class="nav-link d-none d-sm-inline">Siniestros</a>
+            <a href="{{ url_for('portal.recibos') }}" class="nav-link d-none d-sm-inline">Recibos</a>
+            <a href="{{ url_for('portal.documentos') }}" class="nav-link d-none d-sm-inline">Documentos</a>
+            <a href="{{ url_for('portal.logout') }}" class="nav-link"><i class="bi bi-box-arrow-right"></i> Salir</a>
         </div>
     </div>
 </nav>

@@ -141,9 +141,9 @@ def subir_documento(id):
     siniestro = Siniestro.query.get_or_404(id)
     file = request.files.get('documento')
     if file:
-        from flask import current_app
-        filename = f"siniestro_{id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{file.filename}"
-        ruta = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+        from services.storage import tenant_upload_path
+        filename = f"siniestro_{id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{file.filename}"
+        ruta = tenant_upload_path(filename, 'siniestros')
         file.save(ruta)
         doc = DocumentoSiniestro(
             siniestro_id=id,

@@ -24,6 +24,10 @@ def create_app(run_startup_tasks=True):
             tenant_config = json.loads(tenant.config_json or '{}') if tenant else {}
         except (TypeError, json.JSONDecodeError):
             tenant_config = {}
+        import re
+        branding = tenant_config.setdefault('branding', {})
+        if not re.fullmatch(r'#[0-9a-fA-F]{6}', str(branding.get('primary_color', ''))):
+            branding['primary_color'] = '#003396'
         return {
             'companias': COMPANIAS_ESPANA,
             'ramos_list': RAMOS_ESPANA,

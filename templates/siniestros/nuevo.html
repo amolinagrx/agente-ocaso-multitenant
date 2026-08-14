@@ -76,7 +76,7 @@
 <script>
 function cargarPolizas(clienteId) {
     if (!clienteId) return;
-    fetch('/api/polizas-cliente/' + clienteId)
+    fetch('{{ url_for("api.polizas_cliente", cliente_id=0) }}'.replace('/0', '/' + clienteId))
         .then(r => r.json())
         .then(data => {
             const select = document.getElementById('polizaSelect');

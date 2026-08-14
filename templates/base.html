@@ -11,6 +11,9 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    {% if tenant_config.get('branding', {}).get('primary_color') %}
+    <style>:root { --ocaso-blue: {{ tenant_config.get('branding', {}).get('primary_color') }}; }</style>
+    {% endif %}
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.12/dist/htmx.min.js"></script>
 </head>
 <body>
@@ -24,8 +27,12 @@
             <button class="btn btn-sm float-end me-2 d-lg-none" id="sidebarClose" aria-label="Cerrar" style="color:white;border-color:rgba(255,255,255,0.3)">
                 <i class="bi bi-x-lg"></i>
             </button>
-            <h5 class="mb-0 fw-bold">OCASO</h5>
-            <small class="text-muted">Armilla</small>
+            {% if tenant_config.get('branding', {}).get('logo') %}
+            <img src="{{ tenant_config.get('branding', {}).get('logo') }}" alt="Logo" style="max-height:42px;max-width:150px" class="mb-1">
+            {% else %}
+            <h5 class="mb-0 fw-bold">{{ tenant_config.get('branding', {}).get('name', 'OCASO') }}</h5>
+            {% endif %}
+            <small class="text-muted">{{ current_tenant.name if current_tenant else 'Administración global' }}</small>
         </div>
         <div class="d-flex justify-content-center align-items-center gap-2 py-2 border-bottom">
             <small style="color:rgba(255,255,255,0.7)">{{ current_user.username }}</small>
@@ -37,6 +44,11 @@
             </a>
         </div>
         <div class="list-group list-group-flush mt-2">
+            {% if current_user.is_super_admin and not current_tenant %}
+            <a href="{{ url_for('admin.list_tenants') }}" class="list-group-item list-group-item-action" data-nav="admin">
+                <i class="bi bi-buildings me-2"></i> <span class="nav-label">Oficinas</span>
+            </a>
+            {% else %}
             {% if current_user.tiene_permiso('dashboard') %}
             <a href="{{ url_for('dashboard.index') }}" class="list-group-item list-group-item-action" data-nav="dashboard">
                 <i class="bi bi-speedometer2 me-2"></i> <span class="nav-label">Dashboard</span>
@@ -117,6 +129,7 @@
                 <i class="bi bi-people-gear me-2"></i> <span class="nav-label">Usuarios</span>
             </a>
             {% endif %}
+            {% endif %}
         </div>
     </div>
 
@@ -132,6 +145,11 @@
 
         <!-- Top bar -->
         <nav class="navbar navbar-top border-bottom px-2 py-2">
+            {% if current_user.is_super_admin %}
+            <a href="{{ url_for('admin.list_tenants') }}" class="btn btn-sm btn-outline-secondary me-2" title="Cambiar oficina">
+                <i class="bi bi-buildings"></i> {{ current_tenant.name if current_tenant else 'Oficinas' }}
+            </a>
+            {% endif %}
             <div class="flex-grow-1 position-relative" style="min-width:0">
                 <input type="search"
                        id="buscadorUniversal"
@@ -254,7 +272,7 @@
                 }
             }
 
-            fetch('/set-remember-cookie');
+            fetch('{{ url_for('auth.set_remember_cookie_endpoint') }}');
         })();
     </script>
 
@@ -271,7 +289,7 @@
         clearTimeout(_searchTimer);
         if (q.length < 2) { res.style.display = 'none'; return; }
         _searchTimer = setTimeout(function() {
-            fetch('/api/buscar?q=' + encodeURIComponent(q))
+            fetch('{{ url_for('api.buscar') }}?q=' + encodeURIComponent(q))
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     res.innerHTML = '';

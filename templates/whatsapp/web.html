@@ -242,7 +242,7 @@ function chatWith(phone, name, clienteId) {
     var url = 'https://wa.me/' + clean + '?text=' + encodeURIComponent(msg);
 
     // Track the message
-    fetch('/whatsapp/enviar-mensaje', {
+    fetch('{{ url_for("whatsapp.enviar_mensaje") }}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'cliente_id=' + clienteId + '&mensaje=' + encodeURIComponent(msg)

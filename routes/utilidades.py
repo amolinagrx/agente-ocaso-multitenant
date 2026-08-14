@@ -30,8 +30,11 @@ def comparativa():
         if not f.filename:
             continue
         filename = f.filename
-        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'],
-                                f'comp_{datetime.utcnow().strftime("%Y%m%d%H%M%S")}_{filename}')
+        from services.storage import tenant_upload_path
+        filepath = tenant_upload_path(
+            f'comp_{datetime.utcnow().strftime("%Y%m%d%H%M%S%f")}_{filename}',
+            'temporales',
+        )
         f.save(filepath)
         from utils.ai import extract_text_from_file
         texto = extract_text_from_file(filepath, filename)

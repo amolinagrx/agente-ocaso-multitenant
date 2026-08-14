@@ -12,9 +12,6 @@ cartera_bp = Blueprint('cartera', __name__)
 MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
-CARTERA_DIR = '/data/cartera_ficheros'
-
-
 @cartera_bp.route('/')
 @login_required
 def index():
@@ -68,9 +65,9 @@ def subir():
         flash(f'Ya existe cartera para {MESES[mes]} {anio}. Marca "Reemplazar" para sobrescribir.', 'warning')
         return redirect(url_for('cartera.index'))
 
-    os.makedirs(CARTERA_DIR, exist_ok=True)
+    from services.storage import tenant_upload_path
     filename = f'{anio}-{mes:02d}.xlsx'
-    filepath = os.path.join(CARTERA_DIR, filename)
+    filepath = tenant_upload_path(filename, 'cartera')
     file.save(filepath)
 
     # Parse
@@ -193,7 +190,8 @@ def comparativa_anual():
 def eliminar(id):
     fichero = CarteraFichero.query.get_or_404(id)
     try:
-        os.remove(fichero.ruta)
+        from services.storage import validated_tenant_file
+        os.remove(validated_tenant_file(fichero.ruta))
     except Exception:
         pass
     db.session.delete(fichero)

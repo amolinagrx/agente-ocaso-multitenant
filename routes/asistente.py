@@ -101,7 +101,7 @@ def subir_documento():
         flash('No se selecciono ningun archivo', 'danger')
         return redirect(url_for('asistente.index'))
 
-    upload_dir = current_app.config['UPLOAD_FOLDER']
+    from services.storage import tenant_upload_path
     MAX_SIZE = 10 * 1024 * 1024
     procesados = 0
     errores = 0
@@ -121,7 +121,10 @@ def subir_documento():
             errores += 1; continue
 
         try:
-            filepath = os.path.join(upload_dir, f'doc_{datetime.utcnow().strftime("%Y%m%d%H%M%S")}_{filename}')
+            filepath = tenant_upload_path(
+                f'doc_{datetime.utcnow().strftime("%Y%m%d%H%M%S%f")}_{filename}',
+                'conocimiento',
+            )
             file.save(filepath)
             doc = DocumentoConocimiento(
                 nombre=filename, tipo=ext,

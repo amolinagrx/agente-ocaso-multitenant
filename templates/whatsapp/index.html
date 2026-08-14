@@ -223,7 +223,7 @@ function openPreview(clienteId) {
         '<div class="text-center py-4"><span class="spinner-border"></span></div>';
     modal.show();
 
-    fetch('/whatsapp/vista-previa/' + clienteId)
+    fetch('{{ url_for("whatsapp.vista_previa", id=0) }}'.replace('/0', '/' + clienteId))
         .then(r => r.text())
         .then(html => {
             document.getElementById('previewContent').innerHTML = html;

@@ -131,9 +131,9 @@ def clientes_upload_documento(id):
     if not file or not file.filename:
         return jsonify({'error': 'Archivo requerido'}), 400
 
-    from flask import current_app
-    filename = f"api_{id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{file.filename}"
-    ruta = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    from services.storage import tenant_upload_path
+    filename = f"api_{id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{file.filename}"
+    ruta = tenant_upload_path(filename, 'clientes')
     file.save(ruta)
 
     doc = DocumentoCliente(
@@ -220,6 +220,11 @@ def recibos_create():
     data = request.get_json(force=True, silent=True) or {}
     if not data.get('cliente_id') or not data.get('importe'):
         return jsonify({'error': 'cliente_id e importe requeridos'}), 400
+    cliente = Cliente.query.get_or_404(data['cliente_id'])
+    if data.get('poliza_id'):
+        poliza = Poliza.query.get_or_404(data['poliza_id'])
+        if poliza.cliente_id != cliente.id:
+            return jsonify({'error': 'No se pudo completar la operación'}), 400
 
     r = Recibo(
         cliente_id=data['cliente_id'],
@@ -301,6 +306,7 @@ def polizas_create():
     data = request.get_json(force=True, silent=True) or {}
     if not data.get('numero_poliza') or not data.get('cliente_id'):
         return jsonify({'error': 'numero_poliza y cliente_id requeridos'}), 400
+    Cliente.query.get_or_404(data['cliente_id'])
 
     p = Poliza(
         cliente_id=data['cliente_id'],
@@ -366,6 +372,11 @@ def siniestros_create():
     data = request.get_json(force=True, silent=True) or {}
     if not data.get('cliente_id') or not data.get('tipo') or not data.get('numero_expediente'):
         return jsonify({'error': 'cliente_id, tipo y numero_expediente requeridos'}), 400
+    cliente = Cliente.query.get_or_404(data['cliente_id'])
+    if data.get('poliza_id'):
+        poliza = Poliza.query.get_or_404(data['poliza_id'])
+        if poliza.cliente_id != cliente.id:
+            return jsonify({'error': 'No se pudo completar la operación'}), 400
 
     s = Siniestro(
         cliente_id=data['cliente_id'],

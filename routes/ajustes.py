@@ -1,5 +1,5 @@
 import os
-from flask import Blueprint, render_template, request, flash, redirect, url_for
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session, abort
 from flask_login import login_required, current_user
 from models import db, Configuracion, DocumentoConocimiento, ChunkConocimiento, MensajeAsistente, ApiKey
 from datetime import datetime
@@ -11,7 +11,11 @@ ajustes_bp = Blueprint('ajustes', __name__)
 @ajustes_bp.route('/', methods=['GET', 'POST'])
 @login_required
 def index():
+    if not current_user.tiene_permiso('ajustes', 'r'):
+        return redirect(url_for('dashboard.index'))
     if request.method == 'POST':
+        if not current_user.tiene_permiso('ajustes', 'rw'):
+            return redirect(url_for('dashboard.index'))
         seccion = request.form.get('seccion', '')
 
         if seccion == 'general':
@@ -21,6 +25,24 @@ def index():
             _guardar_config('oficina_email', request.form.get('oficina_email', ''))
             _guardar_config('whatsapp_empresa', request.form.get('whatsapp_empresa', ''))
             _guardar_config('dias_alerta_siniestro', request.form.get('dias_alerta_siniestro', '15'))
+            from services.tenant_context import get_current_tenant
+            import json
+            import re
+            tenant = get_current_tenant()
+            tenant_settings = json.loads(tenant.config_json or '{}')
+            tenant_settings.setdefault('branding', {})
+            requested_color = request.form.get('branding_color', '#003396').strip()
+            if not re.fullmatch(r'#[0-9a-fA-F]{6}', requested_color):
+                requested_color = '#003396'
+            tenant_settings['branding'].update({
+                'name': request.form.get('oficina_nombre', '').strip() or tenant.name,
+                'logo': request.form.get('branding_logo', '').strip() or None,
+                'primary_color': requested_color,
+            })
+            tenant_settings['timezone'] = request.form.get('timezone', 'Europe/Madrid').strip()
+            tenant_settings['locale'] = request.form.get('locale', 'es-ES').strip()
+            tenant.config_json = json.dumps(tenant_settings, ensure_ascii=False)
+            tenant.name = tenant_settings['branding']['name']
             db.session.commit()
             flash('Configuracion general guardada', 'success')
 
@@ -46,6 +68,9 @@ def index():
                     flash('El archivo JSON no es valido', 'danger')
             db.session.commit()
             flash('Configuracion Google Drive guardada', 'success')
+
+        elif seccion == 'smtp':
+            _guardar_config('smtp_host', request.form.get('smtp_host', ''))
             _guardar_config('smtp_port', request.form.get('smtp_port', '587'))
             _guardar_config('smtp_user', request.form.get('smtp_user', ''))
             _guardar_config('smtp_pass', request.form.get('smtp_pass', ''))
@@ -107,9 +132,9 @@ def _guardar_config(clave, valor):
 @ajustes_bp.route('/exportar-backup')
 @login_required
 def exportar_backup():
-    if not current_user.is_admin:
-        flash('Solo administradores', 'danger')
-        return redirect(url_for('ajustes.index'))
+    from services.tenant_context import get_current_tenant_id
+    if not current_user.is_super_admin or get_current_tenant_id() is not None:
+        abort(404)
     """Download the SQLite database as backup."""
     import shutil
     import tempfile
@@ -134,9 +159,9 @@ def exportar_backup():
 @ajustes_bp.route('/importar-backup', methods=['POST'])
 @login_required
 def importar_backup():
-    if not current_user.is_admin:
-        flash('Solo administradores', 'danger')
-        return redirect(url_for('ajustes.index'))
+    from services.tenant_context import get_current_tenant_id
+    if not current_user.is_super_admin or get_current_tenant_id() is not None:
+        abort(404)
     """Restore database from uploaded backup file."""
     from flask import current_app
     import shutil
@@ -172,8 +197,8 @@ def reset_all():
     codigo = request.form.get('codigo_seguridad', '')
     confirmacion = request.form.get('confirmacion', '')
 
-    reset_code = os.environ.get('RESET_CODE', 'rudtb8vx')
-    if codigo != reset_code:
+    reset_code = os.environ.get('RESET_CODE')
+    if not current_user.is_admin or not reset_code or codigo != reset_code:
         flash('Codigo de seguridad incorrecto', 'danger')
         return redirect(url_for('ajustes.index'))
 

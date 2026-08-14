@@ -46,7 +46,7 @@ def index():
 @portal_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        rate_key = f'_rl_{request.remote_addr}'
+        rate_key = f'_rl_portal_{get_current_tenant_id()}_{request.remote_addr}'
         now = datetime.utcnow()
         data = session.get(rate_key, {'c': 0, 't': now.isoformat()})
         last = datetime.fromisoformat(data['t']) if data.get('t') else now

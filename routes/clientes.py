@@ -168,10 +168,9 @@ def subir_documento(id):
     cliente = Cliente.query.get_or_404(id)
     file = request.files.get('documento')
     if file:
-        from flask import current_app
-        import os
-        filename = f"cliente_{id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{file.filename}"
-        ruta = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+        from services.storage import tenant_upload_path
+        filename = f"cliente_{id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{file.filename}"
+        ruta = tenant_upload_path(filename, 'clientes')
         file.save(ruta)
 
         # Convert to PDF if it's an image from camera
@@ -182,7 +181,7 @@ def subir_documento(id):
                 if img.mode in ('RGBA', 'P'):
                     img = img.convert('RGB')
                 pdf_name = filename.rsplit('.', 1)[0] + '.pdf'
-                pdf_ruta = os.path.join(current_app.config['UPLOAD_FOLDER'], pdf_name)
+                pdf_ruta = tenant_upload_path(pdf_name, 'clientes')
                 img.save(pdf_ruta, 'PDF', optimize=True, resolution=150)
                 os.remove(ruta)
                 ruta = pdf_ruta
@@ -215,12 +214,16 @@ def subir_documento(id):
 @clientes_bp.route('/<int:id>/documento/<int:doc_id>/eliminar', methods=['POST'])
 @login_required
 def eliminar_documento(id, doc_id):
+    from services.storage import validated_tenant_file
     doc = DocumentoCliente.query.get_or_404(doc_id)
     if doc.drive_id:
         from utils.drive import delete_from_drive
         delete_from_drive(doc.drive_id)
-    if os.path.exists(doc.ruta):
-        os.remove(doc.ruta)
+    if doc.ruta:
+        try:
+            os.remove(validated_tenant_file(doc.ruta))
+        except FileNotFoundError:
+            pass
     db.session.delete(doc)
     db.session.commit()
     flash('Documento eliminado', 'success')
@@ -231,26 +234,28 @@ def eliminar_documento(id, doc_id):
 @login_required
 def descargar_documento(id, doc_id):
     from flask import send_file
+    from services.storage import validated_tenant_file
     doc = DocumentoCliente.query.get_or_404(doc_id)
     if doc.drive_id:
         from utils.drive import download_from_drive
         data = download_from_drive(doc.drive_id)
         if data:
             return send_file(io.BytesIO(data), download_name=doc.nombre, as_attachment=True)
-    return send_file(doc.ruta, download_name=doc.nombre, as_attachment=True)
+    return send_file(validated_tenant_file(doc.ruta), download_name=doc.nombre, as_attachment=True)
 
 
 @clientes_bp.route('/<int:id>/documento/<int:doc_id>/preview')
 @login_required
 def preview_documento(id, doc_id):
     from flask import send_file
+    from services.storage import validated_tenant_file
     doc = DocumentoCliente.query.get_or_404(doc_id)
     if doc.drive_id:
         from utils.drive import download_from_drive
         data = download_from_drive(doc.drive_id)
         if data:
             return send_file(io.BytesIO(data), download_name=doc.nombre)
-    return send_file(doc.ruta)
+    return send_file(validated_tenant_file(doc.ruta))
 
 
 @clientes_bp.route('/<int:id>/poliza/<int:poliza_id>/editar', methods=['POST'])

@@ -34,6 +34,26 @@
                                    value="{{ config.get('oficina_telefono', '') }}">
                         </div>
                         <div class="col-md-4">
+                            <label class="form-label small">Color principal</label>
+                            <input type="color" name="branding_color" class="form-control form-control-color"
+                                   value="{{ tenant_config.get('branding', {}).get('primary_color', '#003396') }}">
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label small">URL del logo</label>
+                            <input type="url" name="branding_logo" class="form-control form-control-sm"
+                                   value="{{ tenant_config.get('branding', {}).get('logo') or '' }}" placeholder="https://...">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Zona horaria</label>
+                            <input type="text" name="timezone" class="form-control form-control-sm"
+                                   value="{{ tenant_config.get('timezone', 'Europe/Madrid') }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Locale</label>
+                            <input type="text" name="locale" class="form-control form-control-sm"
+                                   value="{{ tenant_config.get('locale', 'es-ES') }}">
+                        </div>
+                        <div class="col-md-4">
                             <label class="form-label small">
                                 <i class="bi bi-whatsapp text-success"></i> WhatsApp empresa
                             </label>
