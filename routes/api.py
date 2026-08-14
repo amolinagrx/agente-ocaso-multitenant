@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, url_for
 from flask_login import login_required
 from models import db, Cliente, Poliza, Recibo
 
@@ -41,7 +41,7 @@ def buscar():
             'telefono': c.telefono or '',
             'polizas_activas': polizas_activas,
             'alerta': c.alerta_devoluciones,
-            'url': f'/clientes/{c.id}'
+            'url': url_for('clientes.ficha', id=c.id)
         })
 
     for p in polizas:
@@ -54,7 +54,7 @@ def buscar():
             'cliente_nombre': cliente.nombre if cliente else '',
             'cliente_id': p.cliente_id,
             'matricula': p.matricula or '',
-            'url': f'/clientes/{p.cliente_id}'
+            'url': url_for('clientes.ficha', id=p.cliente_id)
         })
 
     return jsonify(results)

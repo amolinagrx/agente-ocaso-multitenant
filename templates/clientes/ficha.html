@@ -664,7 +664,7 @@
 <script>
 function editarPoliza(id, numero, ramo, compania, desc, capital, prima, fechaEf, fechaVenc, activa, marca, modelo, anio, matricula, cobertura, tipoViv, metros, continente, contenido, numeroCuenta, unidades, detalles, frecuencia) {
     var form = document.getElementById('editarPolizaForm');
-    form.action = '/clientes/{{ cliente.id }}/poliza/' + id + '/editar';
+    form.action = '{{ url_for('clientes.ficha', id=cliente.id) }}/poliza/' + id + '/editar';
 
     document.getElementById('epNumero').value = numero;
     document.getElementById('epRamo').value = ramo;
