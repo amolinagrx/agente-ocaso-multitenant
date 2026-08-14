@@ -2,8 +2,25 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime, date
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.ext.declarative import declared_attr
+import uuid
 
 db = SQLAlchemy()
+
+
+def new_uuid():
+    """Return a portable UUID string for SQLite and PostgreSQL."""
+    return str(uuid.uuid4())
+
+
+class TenantScopedMixin:
+    """Marker shared by every model whose rows belong to one tenant."""
+
+    @declared_attr
+    def tenant_id(cls):
+        return db.Column(
+            db.String(36), db.ForeignKey('tenants.id'), nullable=False
+        )
 
 COMPANIAS_ESPANA = [
     'Ocaso',
@@ -90,10 +107,21 @@ RAMOS_ESPANA = [
 ]
 
 
-class User(UserMixin, db.Model):
+class Tenant(db.Model):
+    __tablename__ = 'tenants'
+    id = db.Column(db.String(36), primary_key=True, default=new_uuid)
+    name = db.Column(db.String(200), nullable=False)
+    subdomain = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    config_json = db.Column(db.Text, nullable=False, default='{}')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+
+class User(UserMixin, TenantScopedMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
+    tenant_id = db.Column(db.String(36), db.ForeignKey('tenants.id'), nullable=True)
+    username = db.Column(db.String(80), nullable=False)
     password = db.Column(db.String(200), nullable=False)
     nombre = db.Column(db.String(200))
     is_admin = db.Column(db.Boolean, default=False)
@@ -107,6 +135,12 @@ class User(UserMixin, db.Model):
     email_verification_code = db.Column(db.String(10))
     recovery_code = db.Column(db.String(64))
     recovery_code_expires = db.Column(db.DateTime)
+    is_super_admin = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'username', name='uq_users_tenant_username'),
+        db.UniqueConstraint('tenant_id', 'email', name='uq_users_tenant_email'),
+        db.Index('ix_users_tenant_id_id', 'tenant_id', 'id'),
+    )
 
     def set_password(self, raw):
         self.password = generate_password_hash(raw, method='pbkdf2:sha256')
@@ -131,11 +165,11 @@ class User(UserMixin, db.Model):
         return False
 
 
-class Cliente(db.Model):
+class Cliente(TenantScopedMixin, db.Model):
     __tablename__ = 'clientes'
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(200), nullable=False)
-    dni = db.Column(db.String(20), unique=True)
+    dni = db.Column(db.String(20))
     direccion = db.Column(db.String(300))
     codigo_postal = db.Column(db.String(10))
     poblacion = db.Column(db.String(100))
@@ -150,6 +184,11 @@ class Cliente(db.Model):
     portal_password = db.Column(db.String(256))
     portal_token = db.Column(db.String(100))
     portal_password_temporal = db.Column(db.Boolean, default=True)
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'dni', name='uq_clientes_tenant_dni'),
+        db.Index('ix_clientes_tenant_id_id', 'tenant_id', 'id'),
+        db.Index('ix_clientes_tenant_nombre', 'tenant_id', 'nombre'),
+    )
 
     polizas = db.relationship('Poliza', backref='cliente', lazy='dynamic', cascade='all, delete-orphan')
     recibos = db.relationship('Recibo', backref='cliente', lazy='dynamic', cascade='all, delete-orphan')
@@ -167,11 +206,11 @@ class Cliente(db.Model):
         return self.polizas.filter(Poliza.activa == True).all()
 
 
-class Poliza(db.Model):
+class Poliza(TenantScopedMixin, db.Model):
     __tablename__ = 'polizas'
     id = db.Column(db.Integer, primary_key=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
-    numero_poliza = db.Column(db.String(50), unique=True, nullable=False)
+    numero_poliza = db.Column(db.String(50), nullable=False)
     ramo = db.Column(db.String(50), nullable=False)
     compania = db.Column(db.String(50), default='Ocaso')
     descripcion = db.Column(db.String(300))
@@ -193,6 +232,11 @@ class Poliza(db.Model):
     anio = db.Column(db.Integer)
     matricula = db.Column(db.String(20))
     tipo_cobertura = db.Column(db.String(50))
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'numero_poliza', name='uq_polizas_tenant_numero'),
+        db.Index('ix_polizas_tenant_id_id', 'tenant_id', 'id'),
+        db.Index('ix_polizas_tenant_cliente', 'tenant_id', 'cliente_id'),
+    )
 
     # Home-specific fields
     tipo_vivienda = db.Column(db.String(50))
@@ -206,7 +250,7 @@ class Poliza(db.Model):
                                    cascade='all, delete-orphan')
 
 
-class Recibo(db.Model):
+class Recibo(TenantScopedMixin, db.Model):
     __tablename__ = 'recibos'
     id = db.Column(db.Integer, primary_key=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
@@ -222,11 +266,15 @@ class Recibo(db.Model):
     compania = db.Column(db.String(50), default='Ocaso')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     deleted_at = db.Column(db.DateTime)
+    __table_args__ = (
+        db.Index('ix_recibos_tenant_id_id', 'tenant_id', 'id'),
+        db.Index('ix_recibos_tenant_estado', 'tenant_id', 'estado'),
+    )
 
     poliza_rel = db.relationship('Poliza', backref='recibos')
 
 
-class Renovacion(db.Model):
+class Renovacion(TenantScopedMixin, db.Model):
     __tablename__ = 'renovaciones'
     id = db.Column(db.Integer, primary_key=True)
     poliza_id = db.Column(db.Integer, db.ForeignKey('polizas.id'), nullable=False)
@@ -239,12 +287,12 @@ class Renovacion(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-class Siniestro(db.Model):
+class Siniestro(TenantScopedMixin, db.Model):
     __tablename__ = 'siniestros'
     id = db.Column(db.Integer, primary_key=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
     poliza_id = db.Column(db.Integer, db.ForeignKey('polizas.id'))
-    numero_expediente = db.Column(db.String(50), unique=True, nullable=False)
+    numero_expediente = db.Column(db.String(50), nullable=False)
     tipo = db.Column(db.String(50), nullable=False)
     descripcion = db.Column(db.Text)
     fecha_ocurrencia = db.Column(db.Date)
@@ -254,6 +302,10 @@ class Siniestro(db.Model):
     # en_valoracion, pendiente_resolucion, resuelto, cerrado
     fecha_ultima_actualizacion = db.Column(db.DateTime, default=datetime.utcnow)
     importe_estimado = db.Column(db.Float, default=0)
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'numero_expediente', name='uq_siniestros_tenant_expediente'),
+        db.Index('ix_siniestros_tenant_id_id', 'tenant_id', 'id'),
+    )
 
     hitos = db.relationship('HitoSiniestro', backref='siniestro', lazy='dynamic',
                             cascade='all, delete-orphan', order_by='HitoSiniestro.fecha.desc()')
@@ -261,7 +313,7 @@ class Siniestro(db.Model):
                                  cascade='all, delete-orphan')
 
 
-class HitoSiniestro(db.Model):
+class HitoSiniestro(TenantScopedMixin, db.Model):
     __tablename__ = 'hitos_siniestro'
     id = db.Column(db.Integer, primary_key=True)
     siniestro_id = db.Column(db.Integer, db.ForeignKey('siniestros.id'), nullable=False)
@@ -270,17 +322,18 @@ class HitoSiniestro(db.Model):
     notas = db.Column(db.Text)
 
 
-class DocumentoSiniestro(db.Model):
+class DocumentoSiniestro(TenantScopedMixin, db.Model):
     __tablename__ = 'documentos_siniestro'
     id = db.Column(db.Integer, primary_key=True)
     siniestro_id = db.Column(db.Integer, db.ForeignKey('siniestros.id'), nullable=False)
     nombre = db.Column(db.String(300))
     tipo = db.Column(db.String(50))  # parte_amistoso, presupuesto, informe_pericial, otro
     ruta = db.Column(db.String(500))
+    drive_id = db.Column(db.String(200))
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-class HistorialContacto(db.Model):
+class HistorialContacto(TenantScopedMixin, db.Model):
     __tablename__ = 'historial_contacto'
     id = db.Column(db.Integer, primary_key=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
@@ -289,7 +342,7 @@ class HistorialContacto(db.Model):
     notas = db.Column(db.Text)
 
 
-class DocumentoCliente(db.Model):
+class DocumentoCliente(TenantScopedMixin, db.Model):
     __tablename__ = 'documentos_cliente'
     id = db.Column(db.Integer, primary_key=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
@@ -300,7 +353,7 @@ class DocumentoCliente(db.Model):
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-class Comunicacion(db.Model):
+class Comunicacion(TenantScopedMixin, db.Model):
     __tablename__ = 'comunicaciones'
     id = db.Column(db.Integer, primary_key=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
@@ -311,7 +364,7 @@ class Comunicacion(db.Model):
     enviado = db.Column(db.Boolean, default=False)
 
 
-class PlantillaComunicacion(db.Model):
+class PlantillaComunicacion(TenantScopedMixin, db.Model):
     __tablename__ = 'plantillas_comunicacion'
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
@@ -320,14 +373,18 @@ class PlantillaComunicacion(db.Model):
     contenido = db.Column(db.Text, nullable=False)
 
 
-class Configuracion(db.Model):
+class Configuracion(TenantScopedMixin, db.Model):
     __tablename__ = 'configuracion'
     id = db.Column(db.Integer, primary_key=True)
-    clave = db.Column(db.String(100), unique=True, nullable=False)
+    clave = db.Column(db.String(100), nullable=False)
     valor = db.Column(db.String(500))
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'clave', name='uq_configuracion_tenant_clave'),
+        db.Index('ix_configuracion_tenant_id_id', 'tenant_id', 'id'),
+    )
 
 
-class DocumentoConocimiento(db.Model):
+class DocumentoConocimiento(TenantScopedMixin, db.Model):
     __tablename__ = 'documentos_conocimiento'
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(300), nullable=False)
@@ -339,7 +396,7 @@ class DocumentoConocimiento(db.Model):
                              cascade='all, delete-orphan')
 
 
-class ChunkConocimiento(db.Model):
+class ChunkConocimiento(TenantScopedMixin, db.Model):
     __tablename__ = 'chunks_conocimiento'
     id = db.Column(db.Integer, primary_key=True)
     documento_id = db.Column(db.Integer, db.ForeignKey('documentos_conocimiento.id'), nullable=False)
@@ -349,7 +406,7 @@ class ChunkConocimiento(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-class MensajeAsistente(db.Model):
+class MensajeAsistente(TenantScopedMixin, db.Model):
     __tablename__ = 'mensajes_asistente'
     id = db.Column(db.Integer, primary_key=True)
     rol = db.Column(db.String(20), nullable=False)  # user, assistant, system
@@ -358,7 +415,7 @@ class MensajeAsistente(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-class Agenda(db.Model):
+class Agenda(TenantScopedMixin, db.Model):
     __tablename__ = 'agenda'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -370,7 +427,7 @@ class Agenda(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-class Lead(db.Model):
+class Lead(TenantScopedMixin, db.Model):
     __tablename__ = 'leads'
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(200), nullable=False)
@@ -391,7 +448,7 @@ class Lead(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class Cartera(db.Model):
+class Cartera(TenantScopedMixin, db.Model):
     __tablename__ = 'cartera'
     id = db.Column(db.Integer, primary_key=True)
     mes = db.Column(db.Integer, nullable=False)
@@ -407,7 +464,7 @@ class Cartera(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-class ApiKey(db.Model):
+class ApiKey(TenantScopedMixin, db.Model):
     __tablename__ = 'api_keys'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -418,7 +475,7 @@ class ApiKey(db.Model):
     last_used = db.Column(db.DateTime)
 
 
-class CarteraFichero(db.Model):
+class CarteraFichero(TenantScopedMixin, db.Model):
     __tablename__ = 'cartera_ficheros'
     id = db.Column(db.Integer, primary_key=True)
     mes = db.Column(db.Integer, nullable=False)
@@ -431,12 +488,15 @@ class CarteraFichero(db.Model):
     prima_neta_total = db.Column(db.Float)
     fecha_subida = db.Column(db.DateTime, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    __table_args__ = (db.UniqueConstraint('mes', 'anio', name='uq_cartera_mes_anio'),)
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'mes', 'anio', name='uq_cartera_tenant_mes_anio'),
+        db.Index('ix_cartera_ficheros_tenant_id_id', 'tenant_id', 'id'),
+    )
 
     polizas = db.relationship('CarteraPoliza', backref='fichero', lazy='dynamic', cascade='all, delete-orphan')
 
 
-class CarteraPoliza(db.Model):
+class CarteraPoliza(TenantScopedMixin, db.Model):
     __tablename__ = 'cartera_polizas'
     id = db.Column(db.Integer, primary_key=True)
     fichero_id = db.Column(db.Integer, db.ForeignKey('cartera_ficheros.id'), nullable=False)
@@ -452,7 +512,7 @@ class CarteraPoliza(db.Model):
     aseg = db.Column(db.String(50))
 
 
-class CarteraBaja(db.Model):
+class CarteraBaja(TenantScopedMixin, db.Model):
     __tablename__ = 'cartera_bajas'
     id = db.Column(db.Integer, primary_key=True)
     mes_desde = db.Column(db.Integer)
@@ -468,7 +528,7 @@ class CarteraBaja(db.Model):
     poliza_renumerada_a = db.Column(db.String(20))
 
 
-class CarteraAlta(db.Model):
+class CarteraAlta(TenantScopedMixin, db.Model):
     __tablename__ = 'cartera_altas'
     id = db.Column(db.Integer, primary_key=True)
     mes_desde = db.Column(db.Integer)
@@ -480,3 +540,18 @@ class CarteraAlta(db.Model):
     producto = db.Column(db.String(200))
     tipo_recibo = db.Column(db.String(100))
     prima_neta = db.Column(db.Float)
+
+
+# Every tenant-owned table has a compound lookup index. Explicitly declared
+# indexes above are retained for the busiest domain-specific access paths.
+_TENANT_MODELS = (
+    User, Cliente, Poliza, Recibo, Renovacion, Siniestro, HitoSiniestro,
+    DocumentoSiniestro, HistorialContacto, DocumentoCliente, Comunicacion,
+    PlantillaComunicacion, Configuracion, DocumentoConocimiento,
+    ChunkConocimiento, MensajeAsistente, Agenda, Lead, Cartera, ApiKey,
+    CarteraFichero, CarteraPoliza, CarteraBaja, CarteraAlta,
+)
+for _model in _TENANT_MODELS:
+    _index_name = f'ix_{_model.__tablename__}_tenant_id_id'
+    if not any(index.name == _index_name for index in _model.__table__.indexes):
+        db.Index(_index_name, _model.tenant_id, _model.id)
