@@ -1124,7 +1124,10 @@ a:hover { color: var(--ocaso-blue-light); }
 .metric-value small { margin-left: 2px; color: var(--text-muted); font-size: .8rem; font-weight: 700; }
 .metric-label { position: relative; z-index: 1; display: block; margin-top: 6px; color: var(--text-muted); font-size: .72rem; font-weight: 500; }
 .chart-body { position: relative; height: 330px; padding: 18px 20px 14px; }
-.branch-list { display: grid; }
+.branch-list { display: grid; max-height: 330px; overflow-y: auto; }
+.branch-list::-webkit-scrollbar { width: 6px; }
+.branch-list::-webkit-scrollbar-track { background: transparent; }
+.branch-list::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 3px; }
 .branch-row { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 13px 18px; border-bottom: 1px solid var(--border-subtle); }
 .branch-row:last-child { border-bottom: 0; }
 .branch-dot { width: 8px; height: 8px; background: var(--brand-primary); border-radius: 3px; }
@@ -1297,6 +1300,7 @@ a:hover { color: var(--ocaso-blue-light); }
     .metric-icon { width: 34px; height: 34px; }
     .metric-trend { max-width: 68px; overflow: hidden; text-overflow: ellipsis; }
     .chart-body { height: 280px; padding-inline: 12px; }
+    .branch-list { max-height: 280px; }
     .surface-card-header { min-height: 66px; padding: 14px; }
     .table-responsive { margin: 0; width: 100%; }
 }
