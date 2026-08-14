@@ -1220,6 +1220,8 @@ a:hover { color: var(--ocaso-blue-light); }
 .login-submit { display: flex; height: 49px; align-items: center; justify-content: space-between; margin-top: 3px; padding-inline: 18px; border-radius: 12px; }
 .login-submit i { transition: transform .2s ease; }
 .login-submit:hover i { transform: translateX(3px); }
+.login-change-office { display: flex; min-height: 42px; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; color: var(--text-muted); border: 1px dashed var(--border-subtle); border-radius: 12px; font-size: .74rem; font-weight: 650; text-decoration: none; }
+.login-change-office:hover { color: var(--brand-primary); border-color: var(--brand-primary); background: rgba(37, 99, 235, .04); }
 .login-divider { display: flex; align-items: center; gap: 12px; margin: 24px 0 15px; color: #98a4b6; font-size: .64rem; }
 .login-divider::before, .login-divider::after { content: ''; height: 1px; flex: 1; background: var(--border-subtle); }
 .btn-portal-access { display: flex; min-height: 58px; align-items: center; gap: 11px; width: 100%; padding: 9px 12px; color: var(--text-body); background: #f8fafc; border: 1px solid var(--border-subtle); text-align: left; }

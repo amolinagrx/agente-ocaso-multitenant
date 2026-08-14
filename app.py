@@ -5,8 +5,24 @@ from flask_login import LoginManager, current_user, logout_user
 from models import db, User
 
 
+def global_login_url():
+    """URL del login global (sin tenant), para cambiar de oficina."""
+    from flask import request, url_for
+
+    target = url_for('auth.login')
+    script_root = request.script_root or ''
+    if script_root and script_root != '/':
+        target = target[len(script_root):] or '/'
+    host = request.host.split(':', 1)[0].lower()
+    base_domain = os.environ.get('TENANT_BASE_DOMAIN', 'gestion.ocasoarmilla.es').lower()
+    if host != base_domain and host.endswith('.' + base_domain):
+        return f'https://{base_domain}{target}'
+    return target
+
+
 def create_app(run_startup_tasks=True):
     app = Flask(__name__)
+    app.jinja_env.globals['global_login_url'] = global_login_url
 
     @app.context_processor
     def inject_globals():

@@ -92,6 +92,12 @@
                 </form>
 
                 {% if tenant %}
+                <a href="{{ global_login_url() }}" class="login-change-office">
+                    <i class="bi bi-arrow-left-right"></i><span>Cambiar de oficina</span>
+                </a>
+                {% endif %}
+
+                {% if tenant %}
                 <div class="login-divider"><span>o continúa como cliente</span></div>
                 <a href="{{ url_for('portal.index') }}" class="btn btn-portal-access">
                     <span class="portal-access-icon"><i class="bi bi-person-badge"></i></span>
