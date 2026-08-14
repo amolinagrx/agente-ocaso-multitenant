@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, Cliente, Poliza, Siniestro, DocumentoCliente, Recibo
+from services.tenant_context import get_current_tenant_id
 
 portal_bp = Blueprint('portal', __name__, url_prefix='/portal')
 
@@ -14,7 +15,8 @@ def cliente_required(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         cliente_id = session.get('cliente_id')
-        if not cliente_id:
+        if not cliente_id or str(session.get('portal_tenant_id')) != str(get_current_tenant_id()):
+            session.clear()
             return redirect(url_for('portal.login'))
 
         last_activity = session.get('last_activity')
@@ -60,6 +62,7 @@ def login():
         if cliente and cliente.portal_password and check_password_hash(cliente.portal_password, password):
             session.clear()
             session['cliente_id'] = cliente.id
+            session['portal_tenant_id'] = get_current_tenant_id()
             session['last_activity'] = datetime.utcnow().isoformat()
             session.permanent = True
 
@@ -87,8 +90,8 @@ def cambiar_password():
     if request.method == 'POST':
         new_pass = request.form.get('password', '')
         confirm = request.form.get('confirm', '')
-        if len(new_pass) < 4:
-            flash('La contrasena debe tener al menos 4 caracteres', 'danger')
+        if len(new_pass) < 8:
+            flash('La contrasena debe tener al menos 8 caracteres', 'danger')
         elif new_pass != confirm:
             flash('Las contrasenas no coinciden', 'danger')
         else:

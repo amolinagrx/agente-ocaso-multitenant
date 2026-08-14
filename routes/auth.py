@@ -1,6 +1,8 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, make_response
 from flask_login import login_user, logout_user, login_required, current_user
 from models import db, User
+from services.tenant_context import get_current_tenant, get_current_tenant_id
+from services.tenant_service import tenant_url_for
 from itsdangerous import URLSafeTimedSerializer
 from datetime import timedelta, datetime
 import os
@@ -25,7 +27,10 @@ def _check_remember_cookie(user_id):
     try:
         s = _get_serializer()
         data = s.loads(cookie_val, max_age=REMEMBER_DAYS * 86400)
-        return str(data.get('user_id')) == str(user_id)
+        return (
+            str(data.get('user_id')) == str(user_id)
+            and str(data.get('tenant_id')) == str(get_current_tenant_id())
+        )
     except Exception:
         return False
 
@@ -33,7 +38,7 @@ def _check_remember_cookie(user_id):
 def _set_remember_cookie(response, user_id):
     """Set a signed 7-day cookie to remember this device."""
     s = _get_serializer()
-    token = s.dumps({'user_id': user_id})
+    token = s.dumps({'user_id': user_id, 'tenant_id': get_current_tenant_id()})
     response.set_cookie(
         'remember_2fa', token,
         max_age=REMEMBER_DAYS * 86400,
@@ -48,60 +53,89 @@ def _set_remember_cookie(response, user_id):
 def login():
     if request.method == 'POST':
         # Rate limiting: 10 attempts/min
-        rate_key = f'_rl_{request.remote_addr}'
+        rate_key = f'_rl_{get_current_tenant_id() or "global"}_{request.remote_addr}'
         now = datetime.utcnow()
         data = session.get(rate_key, {'c': 0, 't': now.isoformat()})
         last = datetime.fromisoformat(data['t']) if data.get('t') else now
         if (now - last).seconds < 60 and data.get('c', 0) >= 10:
             flash('Demasiados intentos. Espera un minuto.', 'danger')
-            return render_template('login.html')
+            return render_template('login.html', tenant=get_current_tenant())
         session[rate_key] = {'c': data.get('c', 0) + 1 if (now - last).seconds < 60 else 1, 't': now.isoformat()}
 
-        username = request.form.get('username')
+        identity = (request.form.get('email') or request.form.get('username') or '').strip().lower()
         password = request.form.get('password')
-        user = User.query.filter_by(username=username).first()
+        tenant = get_current_tenant()
+        if tenant is not None:
+            user = User.query.filter(
+                (User.email == identity) | (User.username == identity)
+            ).first()
+        else:
+            from sqlalchemy import select
+            statement = (
+                select(User)
+                .where(
+                    User.tenant_id.is_(None),
+                    User.is_super_admin.is_(True),
+                    (User.email == identity) | (User.username == identity),
+                )
+                .execution_options(tenant_bypass=True)
+            )
+            user = db.session.execute(statement).scalar_one_or_none()
 
         if user and user.check_password(password):
             if not user.activo:
                 flash('Usuario o contrasena incorrectos', 'danger')
-                return render_template('login.html')
+                return render_template('login.html', tenant=get_current_tenant())
 
             if user.password_temporal:
+                session['tenant_id'] = user.tenant_id
                 session['pending_user_id'] = user.id
                 session['must_change_password'] = True
-                return redirect(url_for('auth.cambiar_password'))
+                return redirect(tenant_url_for('auth.cambiar_password'))
 
             if user.totp_enabled:
                 if _check_remember_cookie(user.id):
-                    resp = make_response(redirect(url_for('dashboard.index')))
                     login_user(user)
+                    session['tenant_id'] = user.tenant_id
+                    endpoint = 'admin.list_tenants' if user.is_super_admin else 'dashboard.index'
+                    resp = make_response(redirect(tenant_url_for(endpoint)))
                     return resp
 
+                session['tenant_id'] = user.tenant_id
                 session['pending_user_id'] = user.id
-                return redirect(url_for('auth.verify_2fa'))
+                return redirect(tenant_url_for('auth.verify_2fa'))
 
             login_user(user)
+            session['tenant_id'] = user.tenant_id
             next_page = request.args.get('next')
             if next_page and not next_page.startswith('/'):
                 next_page = None
             if next_page and '//' in next_page:
                 next_page = None
-            return redirect(next_page or url_for('dashboard.index'))
+            endpoint = 'admin.list_tenants' if user.is_super_admin else 'dashboard.index'
+            return redirect(next_page or tenant_url_for(endpoint))
 
         flash('Usuario o contrasena incorrectos', 'danger')
-    return render_template('login.html')
+    return render_template('login.html', tenant=get_current_tenant())
 
 
 @auth_bp.route('/recuperar', methods=['GET', 'POST'])
 def recuperar():
     if request.method == 'POST':
+        if get_current_tenant() is None:
+            flash('No se pudo completar la solicitud', 'danger')
+            return render_template('recuperar.html', paso=1, tenant_slug=None)
         # Option 1: Secret key
         clave = request.form.get('clave_secreta', '')
-        master_key = os.environ.get('RECOVERY_MASTER_KEY', 'ybw12dNv.rudtv8vx.2026')
+        master_key = os.environ.get('RECOVERY_MASTER_KEY')
         if clave and master_key and clave == master_key:
             session['recuperar_autorizado'] = True
+            session['recovery_tenant_id'] = get_current_tenant_id()
             usuarios = User.query.order_by(User.username).all()
-            return render_template('recuperar.html', paso=2, usuarios=usuarios)
+            return render_template(
+                'recuperar.html', paso=2, usuarios=usuarios,
+                tenant_slug=get_current_tenant().subdomain,
+            )
 
         # Option 2: Email recovery
         email = request.form.get('email', '').strip()
@@ -128,13 +162,23 @@ def recuperar():
                 user.recovery_code_expires = None
                 db.session.commit()
                 session['recovery_user_id'] = user.id
-                return render_template('recuperar.html', paso=3, recovery_user=user)
+                session['recovery_tenant_id'] = get_current_tenant_id()
+                return render_template(
+                    'recuperar.html', paso=3, recovery_user=user,
+                    tenant_slug=get_current_tenant().subdomain,
+                )
             else:
                 flash('Codigo invalido o caducado', 'danger')
 
-        return render_template('recuperar.html', paso=1)
+        return render_template(
+            'recuperar.html', paso=1,
+            tenant_slug=get_current_tenant().subdomain if get_current_tenant() else None,
+        )
 
-    return render_template('recuperar.html', paso=1)
+    return render_template(
+        'recuperar.html', paso=1,
+        tenant_slug=get_current_tenant().subdomain if get_current_tenant() else None,
+    )
 
 
 @auth_bp.route('/recuperar/cambiar', methods=['POST'])
@@ -146,27 +190,34 @@ def recuperar_cambiar():
     if not user_id:
         user_id = session.get('recovery_user_id')
 
-    if not user_id or len(new_password) < 3:
+    if str(session.get('recovery_tenant_id')) != str(get_current_tenant_id()):
+        session.pop('recuperar_autorizado', None)
+        session.pop('recovery_user_id', None)
+        session.pop('recovery_tenant_id', None)
+        return ('Solicitud no disponible', 404)
+
+    if not user_id or len(new_password) < 8:
         flash('Selecciona un usuario y pon una contrasena valida', 'danger')
-        return redirect(url_for('auth.recuperar'))
+        return redirect(tenant_url_for('auth.recuperar'))
 
     # Check authorization
     if not session.get('recuperar_autorizado') and session.get('recovery_user_id') != user_id:
         flash('Acceso no autorizado', 'danger')
-        return redirect(url_for('auth.recuperar'))
+        return redirect(tenant_url_for('auth.recuperar'))
 
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         flash('Usuario no encontrado', 'danger')
-        return redirect(url_for('auth.recuperar'))
+        return redirect(tenant_url_for('auth.recuperar'))
 
     user.set_password(new_password)
     db.session.commit()
     session.pop('recuperar_autorizado', None)
     session.pop('recovery_user_id', None)
+    session.pop('recovery_tenant_id', None)
 
     flash(f'Contrasena de {user.username} cambiada correctamente', 'success')
-    return redirect(url_for('auth.login'))
+    return redirect(tenant_url_for('auth.login'))
 
 
 @auth_bp.route('/cambiar-password', methods=['GET', 'POST'])
@@ -175,7 +226,7 @@ def cambiar_password():
     if not user_id or not session.get('must_change_password'):
         return redirect(url_for('auth.login'))
 
-    user = User.query.get(user_id)
+    user = _pending_user(user_id)
     if not user:
         session.clear()
         return redirect(url_for('auth.login'))
@@ -183,8 +234,8 @@ def cambiar_password():
     if request.method == 'POST':
         new_pass = request.form.get('password', '')
         confirm = request.form.get('confirm', '')
-        if len(new_pass) < 4:
-            flash('La contrasena debe tener al menos 4 caracteres', 'danger')
+        if len(new_pass) < 8:
+            flash('La contrasena debe tener al menos 8 caracteres', 'danger')
         elif new_pass != confirm:
             flash('Las contrasenas no coinciden', 'danger')
         else:
@@ -195,7 +246,9 @@ def cambiar_password():
             session.pop('pending_user_id', None)
             login_user(user)
             flash('Contrasena cambiada correctamente', 'success')
-            return redirect(url_for('dashboard.index'))
+            session['tenant_id'] = user.tenant_id
+            endpoint = 'admin.list_tenants' if user.is_super_admin else 'dashboard.index'
+            return redirect(tenant_url_for(endpoint))
 
     return render_template('cambiar_password.html', username=user.username)
 
@@ -206,7 +259,7 @@ def verify_2fa():
     if not user_id:
         return redirect(url_for('auth.login'))
 
-    user = User.query.get(user_id)
+    user = _pending_user(user_id)
     if not user:
         session.pop('pending_user_id', None)
         return redirect(url_for('auth.login'))
@@ -222,7 +275,9 @@ def verify_2fa():
             remember = request.form.get('remember_device') == 'on'
             session['set_remember_2fa'] = remember
 
-            next_page = request.args.get('next') or url_for('dashboard.index')
+            session['tenant_id'] = user.tenant_id
+            endpoint = 'admin.list_tenants' if user.is_super_admin else 'dashboard.index'
+            next_page = request.args.get('next') or tenant_url_for(endpoint)
             return redirect(next_page)
 
         flash('Codigo de verificacion incorrecto', 'danger')
@@ -260,3 +315,15 @@ def get_totp_uri(user):
     return pyotp.totp.TOTP(user.totp_secret).provisioning_uri(
         name=user.username, issuer_name=TOTP_ISSUER
     )
+
+
+def _pending_user(user_id):
+    if get_current_tenant_id():
+        return db.session.get(User, int(user_id))
+    from sqlalchemy import select
+    statement = (
+        select(User)
+        .where(User.id == int(user_id), User.tenant_id.is_(None), User.is_super_admin.is_(True))
+        .execution_options(tenant_bypass=True)
+    )
+    return db.session.execute(statement).scalar_one_or_none()

@@ -58,18 +58,20 @@ def nuevo():
         return requiere_admin()
 
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()
+        username = request.form.get('username', '').strip().lower()
         password = request.form.get('password', '')
         nombre = request.form.get('nombre', '')
-        email = request.form.get('email', '').strip()
+        email = request.form.get('email', '').strip().lower()
         send_credentials = request.form.get('send_email') == 'on'
 
-        if not username or not password:
-            flash('Usuario y contrasena son obligatorios', 'danger')
+        if not email or len(password) < 8:
+            flash('Email y contraseña de al menos 8 caracteres son obligatorios', 'danger')
             return redirect(url_for('usuarios.nuevo'))
 
-        if User.query.filter_by(username=username).first():
-            flash('Ese nombre de usuario ya existe', 'danger')
+        username = username or email
+
+        if User.query.filter((User.username == username) | (User.email == email)).first():
+            flash('No se pudo crear el usuario', 'danger')
             return redirect(url_for('usuarios.nuevo'))
 
         is_admin = request.form.get('is_admin') == 'on'

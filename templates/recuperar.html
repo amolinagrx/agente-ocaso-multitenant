@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block auth_content %}
+{% macro tenant_field() -%}
+{% if tenant_slug %}
+<input type="hidden" name="tenant" value="{{ tenant_slug }}">
+{% else %}
+<div class="mb-2 text-start"><label class="form-label small">Oficina</label><input type="text" name="tenant" class="form-control form-control-sm" required placeholder="Identificador de oficina"></div>
+{% endif %}
+{%- endmacro %}
 <div class="login-page">
     <div class="login-card">
         <div class="text-center bg-white p-4 p-md-5 rounded-4 shadow">
@@ -17,6 +24,7 @@
             {% endwith %}
 
             <form method="POST" action="{{ url_for('auth.recuperar_cambiar') }}" autocomplete="off">
+                {{ tenant_field() }}
                 <div class="mb-3 text-start">
                     <label class="form-label">Nueva contrasena</label>
                     <input type="password" name="password" class="form-control" required minlength="3" autofocus>
@@ -34,6 +42,7 @@
             {% endwith %}
 
             <form method="POST" action="{{ url_for('auth.recuperar_cambiar') }}" autocomplete="off">
+                {{ tenant_field() }}
                 <div class="mb-3 text-start">
                     <label class="form-label">Usuario</label>
                     <select name="user_id" class="form-select" required autofocus>
@@ -61,6 +70,7 @@
 
             <!-- Email recovery -->
             <form method="POST" class="mb-3" autocomplete="off">
+                {{ tenant_field() }}
                 <div class="mb-2 text-start">
                     <label class="form-label small"><strong>Por email</strong></label>
                     <div class="input-group input-group-sm">
@@ -72,6 +82,7 @@
 
             <!-- Recovery code -->
             <form method="POST" class="mb-3" autocomplete="off">
+                {{ tenant_field() }}
                 <div class="mb-2 text-start">
                     <label class="form-label small"><strong>Tengo un codigo</strong></label>
                     <div class="input-group input-group-sm">
@@ -84,6 +95,7 @@
             <hr>
             <p class="text-muted small mb-2">O usa la clave secreta de administrador:</p>
             <form method="POST" autocomplete="off">
+                {{ tenant_field() }}
                 <div class="input-group input-group-sm">
                     <input type="password" name="clave_secreta" class="form-control" placeholder="Clave secreta">
                     <button class="btn btn-outline-secondary">Acceder</button>
