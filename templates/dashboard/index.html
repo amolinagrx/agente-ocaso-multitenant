@@ -145,20 +145,27 @@ new Chart(ctx, {
         labels: [{% for d in monthly_data %}'{{ d.label }}'{% if not loop.last %},{% endif %}{% endfor %}],
         datasets: [{
             label: 'Pólizas nuevas',
+            type: 'bar',
             data: [{% for d in monthly_data %}{{ d.nuevas }}{% if not loop.last %},{% endif %}{% endfor %}],
             backgroundColor: primaryColor,
             borderRadius: 7,
             borderSkipped: false,
             barPercentage: .7,
-            yAxisID: 'y'
+            yAxisID: 'y',
+            order: 2
         }, {
             label: 'Cobrado (€)',
+            type: 'line',
             data: [{% for d in monthly_data %}{{ d.cobrados }}{% if not loop.last %},{% endif %}{% endfor %}],
+            borderColor: '#14b8a6',
             backgroundColor: '#14b8a6',
-            borderRadius: 7,
-            borderSkipped: false,
-            barPercentage: .7,
-            yAxisID: 'y1'
+            borderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointBackgroundColor: '#14b8a6',
+            tension: 0.35,
+            yAxisID: 'y1',
+            order: 1
         }]
     },
     options: {
@@ -170,12 +177,25 @@ new Chart(ctx, {
                 position: 'bottom',
                 labels: { color: chartText, usePointStyle: true, pointStyle: 'circle', padding: 22, font: { family: 'DM Sans', size: 12 } }
             },
-            tooltip: { padding: 12, cornerRadius: 10, titleFont: { family: 'DM Sans' }, bodyFont: { family: 'DM Sans' } }
+            tooltip: {
+                padding: 12,
+                cornerRadius: 10,
+                titleFont: { family: 'DM Sans' },
+                bodyFont: { family: 'DM Sans' },
+                callbacks: {
+                    label: function(ctx) {
+                        if (ctx.dataset.type === 'line') {
+                            return ' Cobrado: ' + new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(ctx.parsed.y);
+                        }
+                        return ' Pólizas nuevas: ' + ctx.parsed.y;
+                    }
+                }
+            }
         },
         scales: {
             x: { grid: { display: false }, ticks: { color: chartText, font: { family: 'DM Sans' } }, border: { display: false } },
             y: { beginAtZero: true, position: 'left', grid: { color: chartGrid }, ticks: { color: chartText, stepSize: 1, font: { family: 'DM Sans' } }, border: { display: false } },
-            y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: chartText, font: { family: 'DM Sans' } }, border: { display: false } }
+            y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: chartText, font: { family: 'DM Sans' }, callback: function(v) { return v >= 1000 ? (v / 1000).toLocaleString('es-ES', { maximumFractionDigits: 1 }) + 'k€' : v + '€'; } }, border: { display: false } }
         }
     }
 });
