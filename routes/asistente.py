@@ -6,7 +6,7 @@ from models import db, DocumentoConocimiento, ChunkConocimiento, MensajeAsistent
 from utils.ai import (
     extract_text_from_file, chunk_text, generate_embedding,
     search_relevant_chunks, get_platform_context, chat_with_context,
-    summarize_document, build_system_prompt
+    summarize_document, build_system_prompt, _get_api_key
 )
 from datetime import datetime
 
@@ -166,7 +166,7 @@ def limpiar_chat():
 @asistente_bp.route('/configuracion')
 @login_required
 def configuracion():
-    key_configured = bool(os.environ.get('DEEPSEEK_API_KEY', ''))
+    key_configured = bool(_get_api_key())
     docs_count = DocumentoConocimiento.query.count()
     chunks_count = ChunkConocimiento.query.count()
     mensajes_count = MensajeAsistente.query.count()
