@@ -3,9 +3,21 @@ from flask_login import UserMixin
 from datetime import datetime, date
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 import uuid
+import sqlite3
 
 db = SQLAlchemy()
+
+
+@event.listens_for(Engine, 'connect')
+def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute('PRAGMA foreign_keys=ON')
+        cursor.execute('PRAGMA busy_timeout=5000')
+        cursor.close()
 
 
 def new_uuid():
@@ -139,6 +151,11 @@ class User(UserMixin, TenantScopedMixin, db.Model):
     __table_args__ = (
         db.UniqueConstraint('tenant_id', 'username', name='uq_users_tenant_username'),
         db.UniqueConstraint('tenant_id', 'email', name='uq_users_tenant_email'),
+        db.Index(
+            'uq_users_global_email', 'email', unique=True,
+            sqlite_where=tenant_id.is_(None),
+            postgresql_where=tenant_id.is_(None),
+        ),
         db.Index('ix_users_tenant_id_id', 'tenant_id', 'id'),
     )
 

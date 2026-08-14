@@ -139,6 +139,7 @@ CREATE TABLE users (
 	FOREIGN KEY(tenant_id) REFERENCES tenants (id)
 );
 CREATE INDEX ix_users_tenant_id_id ON users (tenant_id, id);
+CREATE UNIQUE INDEX uq_users_global_email ON users (email) WHERE tenant_id IS NULL;
 CREATE TABLE agenda (
 	id INTEGER NOT NULL, 
 	user_id INTEGER NOT NULL, 
@@ -425,4 +426,3 @@ CREATE TABLE hitos_siniestro (
 );
 CREATE INDEX ix_hitos_siniestro_tenant_id_id ON hitos_siniestro (tenant_id, id);
 COMMIT;
-

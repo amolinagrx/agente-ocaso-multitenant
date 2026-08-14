@@ -46,7 +46,11 @@ def create_app(run_startup_tasks=True):
                 return redirect(url_for('admin.list_tenants'))
             return redirect(url_for('dashboard.index'))
         return redirect(url_for('auth.login'))
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+    secret_key = os.environ.get('SECRET_KEY')
+    if not secret_key and os.environ.get('OCASO_ENV', 'production') != 'development':
+        raise RuntimeError('SECRET_KEY es obligatoria en producción')
+    app.config['SECRET_KEY'] = secret_key or secrets.token_hex(32)
+    app.config['SESSION_COOKIE_NAME'] = 'ocaso_session'
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE'] = os.environ.get('OCASO_ENV') != 'development'

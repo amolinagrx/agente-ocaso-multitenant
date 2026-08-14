@@ -2,7 +2,9 @@
 
 API REST para integrar la aplicacion Ocaso Gestion con sistemas externos (agentes IA, Zapier, PowerBI, etc.).
 
-**Base URL**: `http://localhost:5050`
+**Base URL por subdominio**: `https://oficina1.gestion.ocasoarmilla.es`
+
+**Fallback por path**: `https://gestion.ocasoarmilla.es/oficina1`
 
 ---
 
@@ -25,11 +27,7 @@ Incluye el token en cada peticion mediante el header HTTP:
 X-API-Key: tu-token-aqui
 ```
 
-O como parametro de query string:
-
-```
-?api_key=tu-token-aqui
-```
+La API key y la URL deben pertenecer al mismo tenant. No se acepta `tenant_id` del cliente como fuente de autoridad.
 
 ### Revocar
 
@@ -37,7 +35,7 @@ Desde **Ajustes > API Keys**, pulsa **Revocar** en la key que quieras desactivar
 
 ### Seguridad
 
-- Cada API Key esta vinculada a un usuario
+- Cada API Key está vinculada a un usuario y tenant
 - Hereda los permisos de ese usuario
 - Se registra la fecha del ultimo uso
 - Tokens de 64 caracteres hexadecimales

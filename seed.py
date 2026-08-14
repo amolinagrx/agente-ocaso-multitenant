@@ -260,11 +260,21 @@ def run_seed():
     db.session.commit()
     print(f"{renov_count} renovaciones creadas.")
     print("\n--- Seed completado ---")
-    print("Usa las credenciales: admin / ocaso2025")
 
 
 if __name__ == '__main__':
+    import argparse
     from app import create_app
+    from models import Tenant
+    from services.tenant_context import tenant_context
+
+    parser = argparse.ArgumentParser(description='Carga datos demo en un tenant existente.')
+    parser.add_argument('--tenant', required=True, help='Subdominio del tenant de destino')
+    args = parser.parse_args()
     app = create_app()
     with app.app_context():
-        run_seed()
+        tenant = Tenant.query.filter_by(subdomain=args.tenant, active=True).first()
+        if tenant is None:
+            parser.error('Tenant no encontrado o inactivo.')
+        with tenant_context(tenant):
+            run_seed()

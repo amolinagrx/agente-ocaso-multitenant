@@ -12,7 +12,7 @@ from services.tenant_context import clear_current_tenant, set_current_tenant
 
 
 RESERVED_PATHS = {
-    'admin', 'login', 'logout', 'static', 'health', 'set-remember-cookie',
+    'admin', 'login', 'logout', 'static', 'health', 'v1', 'set-remember-cookie',
     'verify-2fa', 'cambiar-password', 'recuperar',
 }
 
@@ -73,7 +73,7 @@ def resolve_tenant():
     if tenant is None:
         abort(404)
     set_current_tenant(tenant)
-    return tenant
+    return None
 
 
 class TenantLogFilter(logging.Filter):
@@ -92,3 +92,6 @@ def init_tenant_middleware(app):
     tenant_filter = TenantLogFilter()
     for handler in app.logger.handlers:
         handler.addFilter(tenant_filter)
+        handler.setFormatter(logging.Formatter(
+            '[%(asctime)s] %(levelname)s tenant=%(tenant_id)s %(message)s'
+        ))

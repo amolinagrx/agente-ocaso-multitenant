@@ -1,6 +1,6 @@
-# Ocaso Gestion - Manual de Usuario
+# Ocaso Gestión Multi-tenant - Manual de Usuario
 
-Aplicacion web para la gestion integral de una oficina de seguros Ocaso en Armilla (Granada).
+Aplicación web multi-tenant para la gestión integral de múltiples oficinas. Cada oficina accede por su subdominio o prefijo de ruta y sus datos están aislados. La guía operativa actualizada está en `README.md` y `docs/`.
 
 ## Indice
 
@@ -35,22 +35,29 @@ Aplicacion web para la gestion integral de una oficina de seguros Ocaso en Armil
 
 ### Instalacion
 ```bash
-git clone https://github.com/amolinagrx/agente-ocaso.git
-cd agente-ocaso
+git clone https://github.com/amolinagrx/agente-ocaso-multitenant.git
+cd agente-ocaso-multitenant
+git checkout multitenant
+cp .env.example .env
+# Configura secretos, tenant inicial y super-admin.
 docker compose up -d --build
+docker compose exec ocaso python3 scripts/seed_multitenant.py
 ```
 
 ### Acceso
-- URL: `http://localhost:5050`
-- Usuario por defecto: `admin`
-- Contrasena por defecto: `ocaso2025`
+- Tenant por path: `http://localhost:5050/oficina-inicial/login`
+- Super-admin: `http://localhost:5050/login`
+- No existen credenciales por defecto; se crean con variables de entorno.
 
 ### Variables de entorno
 | Variable | Descripcion | Default |
 |---|---|---|
-| `OCASO_USER` | Usuario administrador | `admin` |
-| `OCASO_PASS` | Contrasena administrador | `ocaso2025` |
-| `SECRET_KEY` | Clave secreta Flask | Generada automaticamente |
+| `SUPER_ADMIN_EMAIL` | Email del super-admin global | obligatorio |
+| `SUPER_ADMIN_PASSWORD` | Contraseña del super-admin | obligatorio |
+| `DEFAULT_TENANT_ID` | UUID del tenant inicial | obligatorio |
+| `TENANT_BASE_DOMAIN` | Dominio base para subdominios | `gestion.ocasoarmilla.es` |
+| `TENANT_RESOLUTION_METHOD` | `subdomain`, `path` o `hybrid` | `subdomain` |
+| `SECRET_KEY` | Clave secreta Flask | obligatorio en producción |
 | `DEEPSEEK_API_KEY` | API Key para Asistente IA | - |
 | `OCASO_ENV` | Entorno (`production`/`development`) | `production` |
 | `DATA_DIR` | Directorio de datos | `/data` |
@@ -59,7 +66,7 @@ docker compose up -d --build
 ```bash
 OCASO_ENV=development docker compose up -d --build
 ```
-Esto genera automaticamente 50 clientes, ~170 polizas, ~1900 recibos, 10 siniestros y ~90 renovaciones.
+Los datos demo no se generan automáticamente. Usa `python3 seed.py --tenant oficina-inicial` de forma explícita y solo en desarrollo.
 
 ### Navegacion
 
@@ -576,7 +583,7 @@ Checkbox "Recordar este equipo 7 dias" (marcado por defecto). Al verificarte, no
 ### Recuperar contrasena
 En la pantalla de login, link **"¿Olvidaste tu contrasena?"**:
 1. **Por email**: introduces tu email registrado, recibes un codigo de 6 digitos (valido 15 min), introduces el codigo y pones nueva contraseña
-2. **Clave secreta**: introduces la clave `ybw12dNv.rudtv8vx.2026` y seleccionas el usuario a recuperar
+2. **Clave de recuperación**: usa el valor seguro configurado en `RECOVERY_MASTER_KEY`; no existe una clave predeterminada.
 
 ---
 

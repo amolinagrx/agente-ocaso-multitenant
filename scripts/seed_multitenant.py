@@ -89,6 +89,7 @@ def main() -> None:
             )
             super_admin.set_password(super_password)
             db.session.add(super_admin)
+        db.session.flush()
 
         if args.tenant_admin_email:
             email = args.tenant_admin_email.lower()

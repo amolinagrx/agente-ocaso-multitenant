@@ -71,6 +71,8 @@ def enforce_tenant_on_flush(session, _flush_context, _instances):
         if not isinstance(item, TenantScopedMixin):
             continue
         if isinstance(item, User) and item.is_super_admin and item.tenant_id is None:
+            if tenant_id is not None:
+                raise TenantIsolationViolation('No se puede crear un usuario global desde un tenant')
             continue
         if tenant_id is None:
             raise TenantContextMissing('La escritura requiere contexto de tenant')
@@ -83,6 +85,8 @@ def enforce_tenant_on_flush(session, _flush_context, _instances):
         if not isinstance(item, TenantScopedMixin):
             continue
         if isinstance(item, User) and item.is_super_admin and item.tenant_id is None:
+            if tenant_id is not None:
+                raise TenantIsolationViolation('No se puede modificar un usuario global desde un tenant')
             continue
         if tenant_id is None:
             raise TenantContextMissing('La escritura requiere contexto de tenant')

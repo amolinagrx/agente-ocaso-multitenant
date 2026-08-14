@@ -7,10 +7,27 @@ services:
     volumes:
       - ocaso_data:/data
     environment:
-      - OCASO_USER=${OCASO_USER:-admin}
-      - OCASO_PASS=${OCASO_PASS:-ocaso2025}
-      - SECRET_KEY=${SECRET_KEY:-ocaso-secret-key-2025}
+      - OCASO_ENV=${OCASO_ENV:-production}
+      - SECRET_KEY=${SECRET_KEY:?Define SECRET_KEY en .env}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////data/ocaso.db}
+      - DEFAULT_TENANT_ID=${DEFAULT_TENANT_ID:?Define DEFAULT_TENANT_ID en .env}
+      - DEFAULT_TENANT_NAME=${DEFAULT_TENANT_NAME:-Oficina inicial}
+      - DEFAULT_TENANT_SUBDOMAIN=${DEFAULT_TENANT_SUBDOMAIN:-oficina-inicial}
+      - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL:?Define SUPER_ADMIN_EMAIL en .env}
+      - SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD:?Define SUPER_ADMIN_PASSWORD en .env}
+      - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL:-}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-}
+      - TENANT_RESOLUTION_METHOD=${TENANT_RESOLUTION_METHOD:-subdomain}
+      - TENANT_BASE_DOMAIN=${TENANT_BASE_DOMAIN:-gestion.ocasoarmilla.es}
+      - RECOVERY_MASTER_KEY=${RECOVERY_MASTER_KEY:-}
+      - RESET_CODE=${RESET_CODE:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - GOOGLE_DRIVE_ENABLED=${GOOGLE_DRIVE_ENABLED:-0}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/v1/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
 volumes:

@@ -21,6 +21,10 @@ class TenantService:
 
     @staticmethod
     def create_tenant(data: dict) -> Tenant:
+        if has_request_context():
+            from flask_login import current_user
+            if not current_user.is_authenticated or not current_user.is_super_admin:
+                raise ValueError('Datos de tenant no válidos')
         name = str(data.get('name', '')).strip()
         subdomain = str(data.get('subdomain', '')).strip().lower()
         if not name or not SUBDOMAIN_RE.fullmatch(subdomain):
@@ -47,6 +51,10 @@ class TenantService:
 
     @staticmethod
     def switch_tenant(tenant_id: str) -> Tenant:
+        if has_request_context():
+            from flask_login import current_user
+            if not current_user.is_authenticated or not current_user.is_super_admin:
+                raise ValueError('Tenant no disponible')
         tenant = db.session.get(Tenant, tenant_id)
         if tenant is None or not tenant.active:
             raise ValueError('Tenant no disponible')
@@ -58,6 +66,14 @@ class TenantService:
 
     @staticmethod
     def get_tenant_config(tenant_id: str | None = None) -> dict:
+        if has_request_context() and tenant_id is not None:
+            from flask_login import current_user
+            current = get_current_tenant()
+            if (
+                not current_user.is_authenticated
+                or (not current_user.is_super_admin and (current is None or current.id != tenant_id))
+            ):
+                raise ValueError('Tenant no disponible')
         tenant = get_current_tenant() if tenant_id is None else db.session.get(Tenant, tenant_id)
         if tenant is None:
             raise ValueError('Tenant no disponible')
