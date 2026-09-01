@@ -1,6 +1,8 @@
-# Ocaso Gestión Multi-tenant - Manual de Usuario
+# Agentes Élite - Manual de Usuario
 
-Aplicación web multi-tenant para la gestión integral de múltiples oficinas. Cada oficina accede por su subdominio o prefijo de ruta y sus datos están aislados. La guía operativa actualizada está en `README.md` y `docs/`.
+Aplicación web multi-tenant para la gestión integral de las oficinas de **Agentes Élite**. Cada oficina accede por su subdominio o prefijo de ruta y sus datos están completamente aislados (aislamiento obligatorio por tenant en acceso, ORM, datos y archivos).
+
+Este documento describe la aplicación de forma exhaustiva para que sirva de fuente al elaborar un manual completo de presentación adaptado a cada audiencia. La documentación técnica y de despliegue está en `README.md` y `docs/`.
 
 ## Indice
 
@@ -14,17 +16,17 @@ Aplicación web multi-tenant para la gestión integral de múltiples oficinas. C
 8. [Cartera](#8-cartera)
 9. [Utilidades](#9-utilidades)
 10. [Siniestros](#10-siniestros)
-9. [Comunicaciones](#9-comunicaciones)
-10. [WhatsApp](#10-whatsapp)
-11. [Leads](#11-leads)
-12. [Agenda](#12-agenda)
-13. [Asistente IA](#13-asistente-ia)
-14. [Portal de Clientes](#14-portal-de-clientes)
-15. [Ajustes](#15-ajustes)
-16. [Usuarios y Permisos](#16-usuarios-y-permisos)
-17. [Seguridad (2FA)](#17-seguridad-2fa)
-18. [API Externa](#18-api-externa)
-19. [Copias de Seguridad](#19-copias-de-seguridad)
+11. [Comunicaciones](#11-comunicaciones)
+12. [WhatsApp](#12-whatsapp)
+13. [Leads](#13-leads)
+14. [Agenda](#14-agenda)
+15. [Asistente IA](#15-asistente-ia)
+16. [Portal de Clientes](#16-portal-de-clientes)
+17. [Ajustes](#17-ajustes)
+18. [Usuarios y Permisos](#18-usuarios-y-permisos)
+19. [Seguridad (2FA)](#19-seguridad-2fa)
+20. [API Externa](#20-api-externa)
+21. [Copias de Seguridad](#21-copias-de-seguridad)
 
 ---
 
@@ -45,9 +47,19 @@ docker compose exec ocaso python3 scripts/seed_multitenant.py
 ```
 
 ### Acceso
-- Tenant por path: `http://localhost:5050/oficina-inicial/login`
-- Super-admin: `http://localhost:5050/login`
+- Oficina por path: `http://localhost:5050/{subdominio-oficina}/login` (ej. `/oficina-inicial/login`)
+- Oficina por subdominio: `https://{subdominio}.gestion.ocasoarmilla.es/login`
+- Super-admin (global): `http://localhost:5050/login` (sin salir de una oficina; campo "Oficina" vacío)
 - No existen credenciales por defecto; se crean con variables de entorno.
+
+### Identificación del usuario
+El acceso se puede realizar con el **correo electrónico o el usuario**:
+- Campo **"Correo o usuario"**: acepta tanto la dirección de email como el nombre de usuario registrado.
+- Esto se aplica tanto al login global (super-admin) como al de cada oficina.
+
+### Cambiar de oficina
+- Tras hacer logout, permaneces en la pantalla de login de la oficina desde la que has salido.
+- En esa pantalla aparece el enlace **"Cambiar de oficina"**, que te lleva al login global donde puedes indicar otra oficina (o dejar el campo vacío para entrar como super-admin).
 
 ### Variables de entorno
 | Variable | Descripcion | Default |
@@ -58,6 +70,7 @@ docker compose exec ocaso python3 scripts/seed_multitenant.py
 | `TENANT_BASE_DOMAIN` | Dominio base para subdominios | `gestion.ocasoarmilla.es` |
 | `TENANT_RESOLUTION_METHOD` | `subdomain`, `path` o `hybrid` | `subdomain` |
 | `SECRET_KEY` | Clave secreta Flask | obligatorio en producción |
+| `PORT` | Puerto del servicio | `5050` |
 | `DEEPSEEK_API_KEY` | API Key para Asistente IA | - |
 | `OCASO_ENV` | Entorno (`production`/`development`) | `production` |
 | `DATA_DIR` | Directorio de datos | `/data` |
@@ -84,8 +97,14 @@ La aplicacion tiene un **menu lateral azul** a la izquierda con todos los modulo
 - **Cobrado este mes**: total de primas cobradas en el mes
 - **Devuelto**: total de recibos devueltos en el mes
 
+### Selector de mes y año
+- El indicador de mes del encabezado (ej. "Agosto 2026") es **clicable** y abre un selector con **Mes** y **Año**.
+- Al elegir un periodo se recalculan los KPIs de ese mes y la gráfica de evolucion muestra los 12 meses que terminan en el mes seleccionado.
+- Por defecto muestra el mes actual.
+- Los paneles **"Primas por ramo"** y **"Clientes con mayor volumen"** reflejan la cartera actual (snapshot), no se filtran por mes.
+
 ### Grafico de evolucion
-Grafico de barras con los ultimos 12 meses mostrando polizas nuevas y primas cobradas, con doble eje Y.
+Grafico de los ultimos 12 meses con **barras** (polizas nuevas, eje izquierdo) y **linea** (primas cobradas, eje derecho, formateado en €/k€). La ventana de 12 meses se desplaza con el selector de mes/año.
 
 ### Ranking por ramo
 Tabla con primas acumuladas por tipo de seguro (Auto, Hogar, Vida, etc.)
@@ -641,27 +660,6 @@ La base de datos persiste en el volumen `ocaso_data`. Al reconstruir el contened
 
 ---
 
-## Resumen de modulos
-
-| Modulo | Icono | Funcion principal |
-|---|---|---|
-| Dashboard | 🏠 | KPIs y graficos |
-| Recibos | 🧾 | Gestion de cobros y devoluciones |
-| Clientes | 👥 | Fichas, polizas, documentos |
-| Polizas | 📄 | Panel de todas las polizas |
-| Renovaciones | 📅 | Agenda de vencimientos |
-| Listados | 📊 | Informes imprimibles |
-| Siniestros | ⚠️ | Seguimiento de expedientes |
-| Comunicaciones | 💬 | Plantillas WhatsApp/Email/SMS |
-| WhatsApp | 💚 | Envio directo a clientes |
-| Leads | 👤 | Prospectos comerciales |
-| Agenda | 📝 | Notas personales |
-| Asistente IA | 🤖 | Chat con IA + documentacion |
-| Ajustes | ⚙️ | Configuracion y respaldos |
-| Usuarios | 👥🔧 | Gestion de accesos |
-
----
-
 ## Atajos de teclado
 
 | Tecla | Accion |
@@ -675,17 +673,17 @@ La base de datos persiste en el volumen `ocaso_data`. Al reconstruir el contened
 
 ## Soporte
 
-- **Repositorio**: https://github.com/amolinagrx/agente-ocaso
-- **Version**: 1.0
+- **Repositorio**: https://github.com/amolinagrx/agente-ocaso-multitenant
+- **Version**: 2.0.0
 - **Stack**: Python 3.11 + Flask + SQLite + Bootstrap 5 + HTMX
 
 ---
 
-## Resumen de modulos (actualizado v1.1)
+## Resumen de modulos
 
 | Modulo | Icono | Funcion principal |
 |---|---|---|
-| Dashboard | 🏠 | KPIs y graficos |
+| Dashboard | 🏠 | KPIs, selector de mes/año y graficos |
 | Recibos | 🧾 | Gestion de cobros y devoluciones |
 | Clientes | 👥 | Fichas, polizas, documentos, portal |
 | Polizas | 📄 | Panel de todas las polizas |
@@ -697,7 +695,7 @@ La base de datos persiste en el volumen `ocaso_data`. Al reconstruir el contened
 | Comunicaciones | 💬 | Plantillas WhatsApp/Email/SMS |
 | WhatsApp | 💚 | Envio directo a clientes |
 | Leads | 👤 | Prospectos comerciales |
-| Agenda | 📝 | Notas personales |
+| Agenda | 📝 | Notas y tareas personales |
 | Asistente IA | 🤖 | Chat con IA + documentacion |
 | Portal Clientes | 🚪 | Acceso clientes a polizas/docs |
 | Ajustes | ⚙️ | Configuracion, SMTP, Drive, API Keys |
