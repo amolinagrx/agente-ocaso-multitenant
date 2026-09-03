@@ -14,6 +14,9 @@ from services.tenant_context import clear_current_tenant, set_current_tenant
 RESERVED_PATHS = {
     'admin', 'login', 'logout', 'static', 'health', 'v1', 'set-remember-cookie',
     'verify-2fa', 'cambiar-password', 'recuperar',
+    'ajustes', 'dashboard', 'clientes', 'polizas', 'recibos', 'cartera',
+    'renovaciones', 'siniestros', 'comunicaciones', 'whatsapp', 'listados',
+    'asistente', 'portal', 'utilidades', 'usuarios', 'agenda', 'leads', 'api',
 }
 
 
