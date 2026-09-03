@@ -35,9 +35,15 @@ if not exist "%AGENT_FILE%" (
 
 REM Dependencias (silencioso)
 echo Instalando dependencias...
-python -m pip install --quiet flask flask-cors pillow >nul 2>&1
-if errorlevel 1 py -m pip install --quiet flask flask-cors pillow >nul 2>&1
-if errorlevel 1 python3 -m pip install --quiet flask flask-cors pillow >nul 2>&1
+python -m pip install --quiet flask flask-cors pillow pywin32 >nul 2>&1
+if errorlevel 1 py -m pip install --quiet flask flask-cors pillow pywin32 >nul 2>&1
+if errorlevel 1 python3 -m pip install --quiet flask flask-cors pillow pywin32 >nul 2>&1
+REM Verificar WIA
+python -c "import win32com.client; print(\"pywin32 OK\")" >nul 2>&1
+if errorlevel 1 (
+  echo AVISO: pywin32 no se pudo instalar. El escaneo WIA puede fallar.
+  echo Prueba manualmente: pip install pywin32
+)
 
 REM Crear tarea programada que arranca al iniciar sesion
 echo Creando tarea de autoarranque...

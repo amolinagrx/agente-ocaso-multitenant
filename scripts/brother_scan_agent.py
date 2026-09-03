@@ -105,27 +105,54 @@ def _scan_with_scanimage(duplex: bool = False) -> bytes | None:
             return None
 
 
-def _scan_with_wia() -> bytes | None:
-    """Intenta escanear con WIA en Windows ( Brother ADS-1300 vía WIA )."""
+def _scan_with_wia() -> tuple[bytes | None, str]:
+    """Intenta escanear con WIA en Windows. Devuelve (bytes, error_msg)."""
     if platform.system() != "Windows":
-        return None
+        return None, "WIA solo en Windows"
     try:
         import win32com.client  # type: ignore
-    except ImportError:
-        return None
+    except ImportError as e:
+        return None, f"pywin32 no instalado ({e}). Ejecuta: pip install pywin32"
+    # Intentar WIA DeviceManager (mejor para ADF como ADS-1300)
     try:
+        mgr = win32com.client.Dispatch("WIA.DeviceManager")
+        if mgr.DeviceInfos.Count == 0:
+            return None, "WIA: no se detectó ningún escáner. Verifica que el ADS-1300 esté conectado y con driver Brother instalado."
+        # Buscar Brother ADS-1300
+        device = None
+        for i in range(1, mgr.DeviceInfos.Count + 1):
+            info = mgr.DeviceInfos.Item(i)
+            props = {p.Name: p.Value for p in info.Properties} if hasattr(info, "Properties") else {}
+            name = str(props.get("Name", "") or info.Properties("Name").Value if hasattr(info, "Properties") else "")
+            if "Brother" in name or "ADS-1300" in name or "ADS" in name:
+                device = info.Connect()
+                break
+        if device is None:
+            # Usar el primer dispositivo
+            device = mgr.DeviceInfos.Item(1).Connect()
+        # Configurar para ADF, color, 300dpi si es posible
+        item = device.Items.Item(1)
+        try:
+            # WIA_DPS_DOCUMENT_HANDLING_SELECT = 3088, FEEDER = 1
+            item.Properties("3088").Value = 1  # FEEDER
+            item.Properties("6146").Value = 2  # Color
+            item.Properties("6147").Value = 300  # X res
+            item.Properties("6148").Value = 300  # Y res
+        except Exception:
+            pass  # Propiedades no disponibles en todos los drivers
         wia = win32com.client.Dispatch("WIA.CommonDialog")
-        # WIA 2.0: mostrar diálogo o escanear directo
-        # show_acquire_image es el diálogo nativo de Windows
         img = wia.ShowAcquireImage(0, 0, 0x4, "{00000000-0000-0000-0000-000000000000}", False, True)
+        # Si ShowAcquireImage devuelve None, intentar item.Transfer
         if img is None:
-            return None
-        # Guardar a temporal y convertir
+            try:
+                img = item.Transfer("{B96B3CAB-0728-11D3-9D7B-0000F81EF32E}")  # wiaFormatJPEG
+            except Exception as e2:
+                return None, f"WIA Transfer falló: {e2}. Prueba con el diálogo de Windows o usa Brother iPrint&Scan para escanear a PDF y luego súbelo."
+        if img is None:
+            return None, "WIA: el usuario canceló o el escáner no respondió."
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
             tmp_path = tmp.name
-        # WIA ImageFile -> guardar
         img.SaveFile(tmp_path)
-        # Convertir a PDF si Pillow disponible
         if Image is not None:
             im = Image.open(tmp_path)
             pdf_buf = io.BytesIO()
@@ -133,35 +160,52 @@ def _scan_with_wia() -> bytes | None:
                 im = im.convert("RGB")
             im.save(pdf_buf, "PDF", resolution=300.0)
             os.unlink(tmp_path)
-            return pdf_buf.getvalue()
-        # Sin Pillow, devolver JPG (el frontend lo convertirá)
+            return pdf_buf.getvalue(), ""
         with open(tmp_path, "rb") as f:
             data = f.read()
         os.unlink(tmp_path)
-        return data
+        return data, ""
     except Exception as e:
-        print(f"WIA error: {e}")
-        return None
+        return None, f"WIA error: {e}. Asegúrate de que el driver Brother esté instalado y prueba 'Scan to File' con iPrint&Scan."
 
 
 @app.route("/status", methods=["GET"])
 def status():
     has_scanimage = bool(shutil.which("scanimage"))
     has_wia = False
+    wia_error = None
     if platform.system() == "Windows":
         try:
             import win32com.client  # noqa: F401
             has_wia = True
-        except ImportError:
-            pass
+        except ImportError as e:
+            wia_error = str(e)
+    # Intentar listar dispositivos WIA si es Windows
+    wia_devices = []
+    if has_wia:
+        try:
+            import win32com.client
+            mgr = win32com.client.Dispatch("WIA.DeviceManager")
+            for i in range(1, mgr.DeviceInfos.Count + 1):
+                info = mgr.DeviceInfos.Item(i)
+                try:
+                    name = info.Properties("Name").Value
+                except Exception:
+                    name = str(info)
+                wia_devices.append(name)
+        except Exception as e:
+            wia_error = str(e)
     return jsonify({
         "ok": True,
         "scanner": "Brother ADS-1300",
+        "platform": platform.system(),
         "backends": {
             "scanimage": has_scanimage,
             "wia": has_wia,
+            "wia_error": wia_error,
+            "wia_devices": wia_devices,
         },
-        "hint": "Conecta el ADS-1300 por USB y ten el driver Brother instalado. En Linux instala 'sane sane-utils'."
+        "hint": "Conecta el ADS-1300 por USB y ten el driver Brother instalado. En Linux instala 'sane sane-utils' y ejecuta 'scanimage -L'."
     })
 
 
@@ -169,22 +213,30 @@ def status():
 def scan():
     duplex = request.args.get("duplex") == "1" or (request.json or {}).get("duplex") if request.is_json else False
 
-    # Intentar backends en orden
-    data = None
+    errors: list[str] = []
+
     # 1. scanimage (Linux/macOS con SANE)
     data = _scan_with_scanimage(duplex=bool(duplex))
+    if data is None and shutil.which("scanimage"):
+        errors.append("scanimage no detectó el escáner o falló.")
+    elif data is None:
+        errors.append("scanimage no instalado (solo Linux/macOS).")
+
     # 2. WIA (Windows)
     if data is None:
-        data = _scan_with_wia()
+        wia_data, wia_err = _scan_with_wia()
+        if wia_data is not None:
+            data = wia_data
+        elif wia_err:
+            errors.append(wia_err)
 
     if data is None:
         return jsonify({
             "ok": False,
-            "error": "No se pudo escanear. Verifica que el Brother ADS-1300 esté conectado por USB, encendido y con el driver instalado. En Linux instala 'sane' y ejecuta 'scanimage -L' para verificar."
+            "error": "No se pudo escanear. " + " ".join(errors) + " Verifica que el Brother ADS-1300 esté conectado por USB, encendido y con el driver Brother instalado. Prueba con Brother iPrint&Scan > Scan to File y luego sube el PDF manualmente. Estado: http://127.0.0.1:8765/status",
+            "details": errors,
         }), 500
 
-    # Devolver PDF
-    # Detectar si es PDF o JPG por cabecera
     is_pdf = data[:4] == b"%PDF"
     mimetype = "application/pdf" if is_pdf else "image/jpeg"
     ext = "pdf" if is_pdf else "jpg"
