@@ -138,6 +138,10 @@ def index():
 
         return redirect(url_for('ajustes.index'))
 
+    # GET
+    ctx = _load_ajustes_context()
+    return render_template('ajustes/index.html', **ctx)
+
 
 @ajustes_bp.route('/drive/oauth')
 @login_required
@@ -252,9 +256,10 @@ def drive_oauth_callback():
             flash('¡Conectado con Google Drive! Ahora puedes migrar tus documentos.', 'success')
         except Exception as e:
             flash(f'Error al conectar con Google: {e}', 'danger')
-    return redirect(url_for('ajustes.index'))
+        return redirect(url_for('ajustes.index'))
 
-    # Load current config
+
+def _load_ajustes_context():
     config = {}
     for c in Configuracion.query.all():
         config[c.clave] = c.valor
@@ -268,15 +273,16 @@ def drive_oauth_callback():
     api_key_configured = key_from_env or key_from_db
     api_keys = ApiKey.query.filter_by(activo=True).order_by(ApiKey.created_at.desc()).all()
 
-    return render_template('ajustes/index.html',
-                           config=config,
-                           api_keys=api_keys,
-                           docs_count=docs_count,
-                           chunks_count=chunks_count,
-                           mensajes_count=mensajes_count,
-                           api_key_configured=api_key_configured,
-                           key_from_env=key_from_env,
-                           key_from_db=key_from_db)
+    return {
+        'config': config,
+        'api_keys': api_keys,
+        'docs_count': docs_count,
+        'chunks_count': chunks_count,
+        'mensajes_count': mensajes_count,
+        'api_key_configured': api_key_configured,
+        'key_from_env': key_from_env,
+        'key_from_db': key_from_db,
+    }
 
 
 def _guardar_config(clave, valor):
