@@ -291,13 +291,18 @@
                     <option value="otro">Otro</option>
                 </select>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <input type="file" name="documento" id="fileInput" class="form-control form-control-sm" 
                        onchange="document.getElementById('fileName').textContent = this.files[0]?.name || ''">
             </div>
             <div class="col-md-2">
                 <button type="button" class="btn btn-sm btn-outline-secondary w-100" onclick="abrirCamara()">
-                    <i class="bi bi-camera me-1"></i> Camara
+                    <i class="bi bi-camera me-1"></i> Cámara
+                </button>
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-sm btn-outline-primary w-100" onclick="escanearConBrother()" id="btnEscanearBrother">
+                    <i class="bi bi-upc-scan me-1"></i> Escanear
                 </button>
             </div>
             <div class="col-md-2">
@@ -307,8 +312,33 @@
             </div>
             <div class="col-12">
                 <small id="fileName" class="text-muted"></small>
+                <small id="scanStatus" class="text-muted ms-2"></small>
             </div>
         </form>
+
+        <!-- Modal Ayuda Brother ADS-1300 -->
+        <div class="modal fade" id="brotherHelpModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header"><h5 class="modal-title"><i class="bi bi-upc-scan me-2"></i> Brother ADS-1300</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-body small">
+                        <p>Para escanear directamente desde la ficha del cliente:</p>
+                        <ol class="mb-3">
+                            <li>Conecta el <strong>Brother ADS-1300 por USB</strong> al PC de la oficina y enciéndelo.</li>
+                            <li>En ese PC, descarga y ejecuta el agente: <code>scripts/brother_scan_agent.py</code>
+                                <pre class="bg-light p-2 rounded small mt-1">pip install flask flask-cors pillow
+python scripts/brother_scan_agent.py</pre>
+                                <span class="text-muted">Linux: <code>sudo apt install sane sane-utils</code> · Windows: instala el driver Brother y asegúrate de que WIA esté disponible.</span>
+                            </li>
+                            <li>Deja la ventana del agente abierta y vuelve a pulsar <strong>Escanear</strong> aquí. El documento escaneado se cargará automáticamente en "Subir".</li>
+                        </ol>
+                        <p class="mb-1"><strong>Alternativa sin agente:</strong> usa el botón del escáner para "Scan to File" (PDF) y luego arrastra el archivo a "Subir" o usa "Cámara" para fotografiar.</p>
+                        <p class="text-muted small mb-0">El agente solo escucha en <code>127.0.0.1:8765</code> (tu PC), no envía datos fuera.</p>
+                    </div>
+                    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Entendido</button></div>
+                </div>
+            </div>
+        </div>
 
         <!-- Camera capture -->
         <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none"
@@ -770,6 +800,44 @@ function handleCameraCapture(input) {
 
 function abrirEscaner() {
     document.getElementById('scannerInput').click();
+}
+
+async function escanearConBrother() {
+    const btn = document.getElementById('btnEscanearBrother');
+    const status = document.getElementById('scanStatus');
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Escaneando...';
+    status.textContent = 'Conectando con el escáner Brother ADS-1300...';
+    try {
+        const resp = await fetch('http://127.0.0.1:8765/scan', { method: 'POST' });
+        if (!resp.ok) {
+            const j = await resp.json().catch(() => ({}));
+            throw new Error(j.error || 'El escáner no respondió.');
+        }
+        const blob = await resp.blob();
+        const ext = resp.headers.get('Content-Type') === 'application/pdf' ? 'pdf' : 'jpg';
+        const file = new File([blob], 'escaneo_brother_' + Date.now() + '.' + ext, { type: blob.type || 'application/pdf' });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        document.getElementById('fileInput').files = dt.files;
+        document.getElementById('fileName').textContent = file.name + ' (' + (blob.size/1024).toFixed(0) + ' KB) — listo para Subir';
+        status.textContent = 'Escaneo recibido. Pulsa Subir para guardarlo.';
+        status.className = 'text-success small ms-2';
+    } catch (e) {
+        status.textContent = '';
+        // Mostrar ayuda si el agente no está
+        if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError') || e.message.includes('Load failed')) {
+            new bootstrap.Modal(document.getElementById('brotherHelpModal')).show();
+        } else {
+            alert('Error al escanear: ' + e.message + '\n\nSi el agente no está en ejecución, consulta la ayuda.');
+            new bootstrap.Modal(document.getElementById('brotherHelpModal')).show();
+        }
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+        setTimeout(() => { if (status.className.includes('text-success')) { status.textContent = ''; status.className = 'text-muted small ms-2'; } }, 6000);
+    }
 }
 </script>
 
