@@ -1,0 +1,14 @@
+[Unit]
+Description=Agentes Elite - Brother ADS-1300 agent (127.0.0.1:8765)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/agentes-elite/scripts/brother_scan_agent.py --host 127.0.0.1 --port 8765
+Restart=always
+RestartSec=5
+User=%i
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

@@ -316,24 +316,31 @@
             </div>
         </form>
 
-        <!-- Modal Ayuda Brother ADS-1300 -->
+        <!-- Modal Ayuda Brother ADS-1300 (solo si el agente no esta instalado) -->
         <div class="modal fade" id="brotherHelpModal" tabindex="-1">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header"><h5 class="modal-title"><i class="bi bi-upc-scan me-2"></i> Brother ADS-1300</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                     <div class="modal-body small">
-                        <p>Para escanear directamente desde la ficha del cliente:</p>
-                        <ol class="mb-3">
-                            <li>Conecta el <strong>Brother ADS-1300 por USB</strong> al PC de la oficina y enciéndelo.</li>
-                            <li>En ese PC, descarga y ejecuta el agente: <code>scripts/brother_scan_agent.py</code>
-                                <pre class="bg-light p-2 rounded small mt-1">pip install flask flask-cors pillow
-python scripts/brother_scan_agent.py</pre>
-                                <span class="text-muted">Linux: <code>sudo apt install sane sane-utils</code> · Windows: instala el driver Brother y asegúrate de que WIA esté disponible.</span>
-                            </li>
-                            <li>Deja la ventana del agente abierta y vuelve a pulsar <strong>Escanear</strong> aquí. El documento escaneado se cargará automáticamente en "Subir".</li>
-                        </ol>
-                        <p class="mb-1"><strong>Alternativa sin agente:</strong> usa el botón del escáner para "Scan to File" (PDF) y luego arrastra el archivo a "Subir" o usa "Cámara" para fotografiar.</p>
-                        <p class="text-muted small mb-0">El agente solo escucha en <code>127.0.0.1:8765</code> (tu PC), no envía datos fuera.</p>
+                        <div id="brotherFirstTime">
+                            <p>Primera vez en este puesto:</p>
+                            <ol class="mb-3">
+                                <li>Conecta el <strong>Brother ADS-1300 por USB</strong> y enciéndelo.</li>
+                                <li>Descarga el instalador y ejecútalo <strong>una sola vez como Administrador</strong>:
+                                    <div class="d-grid gap-2 mt-2">
+                                        <a href="/static/brother/install_brother_agent_windows.bat" download class="btn btn-sm btn-primary"><i class="bi bi-download me-1"></i> Descargar instalador Windows</a>
+                                        <small class="text-muted">Instala el agente y lo deja autoarrancando. Después no hay que volver a ejecutarlo.</small>
+                                    </div>
+                                </li>
+                                <li>Vuelve a pulsar <strong>Escanear</strong>. El documento aparecerá en "Subir" listo para guardar.</li>
+                            </ol>
+                        </div>
+                        <div id="brotherRetry" style="display:none">
+                            <p class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i> No se pudo contactar con el escáner.</p>
+                            <p class="mb-1">Verifica que el ADS-1300 esté conectado y encendido, y que el agente esté en ejecución (icono en segundo plano). Si acabas de instalarlo, reinicia el PC.</p>
+                        </div>
+                        <p class="mb-1 mt-3"><strong>Alternativa:</strong> usa el botón físico del escáner en "Scan to File" y arrastra el PDF a "Subir", o usa "Cámara".</p>
+                        <p class="text-muted small mb-0">El agente solo escucha en <code>127.0.0.1:8765</code> de tu PC.</p>
                     </div>
                     <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Entendido</button></div>
                 </div>
@@ -808,7 +815,11 @@ async function escanearConBrother() {
     const orig = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Escaneando...';
-    status.textContent = 'Conectando con el escáner Brother ADS-1300...';
+    status.textContent = 'Conectando con el escáner...';
+    status.className = 'text-muted small ms-2';
+    // Mostrar solo primera vez vs reintento
+    const helpFirst = document.getElementById('brotherFirstTime');
+    const helpRetry = document.getElementById('brotherRetry');
     try {
         const resp = await fetch('http://127.0.0.1:8765/scan', { method: 'POST' });
         if (!resp.ok) {
@@ -824,19 +835,25 @@ async function escanearConBrother() {
         document.getElementById('fileName').textContent = file.name + ' (' + (blob.size/1024).toFixed(0) + ' KB) — listo para Subir';
         status.textContent = 'Escaneo recibido. Pulsa Subir para guardarlo.';
         status.className = 'text-success small ms-2';
+        try { localStorage.setItem('brotherAgentInstalled', '1'); } catch(e) {}
     } catch (e) {
         status.textContent = '';
-        // Mostrar ayuda si el agente no está
-        if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError') || e.message.includes('Load failed')) {
-            new bootstrap.Modal(document.getElementById('brotherHelpModal')).show();
-        } else {
-            alert('Error al escanear: ' + e.message + '\n\nSi el agente no está en ejecución, consulta la ayuda.');
-            new bootstrap.Modal(document.getElementById('brotherHelpModal')).show();
+        const isFirstTime = !localStorage.getItem('brotherAgentInstalled');
+        if (helpFirst) helpFirst.style.display = isFirstTime ? '' : 'none';
+        if (helpRetry) helpRetry.style.display = isFirstTime ? 'none' : '';
+        const isNetworkErr = e.message.includes('Failed to fetch') || e.message.includes('NetworkError') || e.message.includes('Load failed') || e.message.includes('Network error');
+        if (isNetworkErr && !isFirstTime) {
+            status.textContent = 'Agente no disponible. Abriendo ayuda...';
+        }
+        new bootstrap.Modal(document.getElementById('brotherHelpModal')).show();
+        if (!isNetworkErr) {
+            // Error del escáner con mensaje concreto
+            setTimeout(() => alert('Error al escanear: ' + e.message), 400);
         }
     } finally {
         btn.disabled = false;
         btn.innerHTML = orig;
-        setTimeout(() => { if (status.className.includes('text-success')) { status.textContent = ''; status.className = 'text-muted small ms-2'; } }, 6000);
+        setTimeout(() => { if (status.className.includes('text-success')) { status.textContent = ''; status.className = 'text-muted small ms-2'; } }, 7000);
     }
 }
 </script>
