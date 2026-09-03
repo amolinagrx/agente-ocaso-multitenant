@@ -69,6 +69,24 @@ def index():
             db.session.commit()
             flash('Configuracion Google Drive guardada', 'success')
 
+            # Migración automática: si Drive ya está configurado, migrar documentos existentes
+            try:
+                from utils.drive import is_drive_configured, migrar_documentos_existentes_a_drive
+                from services.tenant_context import get_current_tenant
+                if is_drive_configured():
+                    tenant = get_current_tenant()
+                    # Si estamos en un tenant, migrar solo ese tenant; si es global (superadmin), migrar todos
+                    tid = tenant.id if tenant else None
+                    result = migrar_documentos_existentes_a_drive(tid)
+                    if result.get('ok') and result.get('migrados', 0) > 0:
+                        flash(f"Se han migrado {result['migrados']} documento(s) existente(s) a Google Drive ({result.get('errores', 0)} errores, {result.get('omitidos', 0)} omitidos).", 'success')
+                    elif result.get('ok') and result.get('migrados', 0) == 0 and (result.get('errores', 0) > 0 or result.get('omitidos', 0) > 0):
+                        flash(f"No se migró ningún documento nuevo ({result.get('errores', 0)} errores, {result.get('omitidos', 0)} omitidos).", 'info')
+            except Exception as e:
+                # No bloquear el guardado por fallo de migración
+                import logging
+                logging.getLogger(__name__).warning(f"Error en migración automática a Drive: {e}")
+
         elif seccion == 'smtp':
             _guardar_config('smtp_host', request.form.get('smtp_host', ''))
             _guardar_config('smtp_port', request.form.get('smtp_port', '587'))
@@ -92,6 +110,20 @@ def index():
                     flash(f'Conexion OK. Email enviado a {test_to}', 'success')
                 else:
                     flash(f'Error: {msg}', 'danger')
+
+        elif seccion == 'drive_migrar':
+            from utils.drive import is_drive_configured, migrar_documentos_existentes_a_drive
+            from services.tenant_context import get_current_tenant
+            if not is_drive_configured():
+                flash('Google Drive no está configurado. Sube primero el JSON de la cuenta de servicio.', 'warning')
+            else:
+                tenant = get_current_tenant()
+                tid = tenant.id if tenant else None
+                result = migrar_documentos_existentes_a_drive(tid)
+                if result.get('ok'):
+                    flash(f"Migración completada: {result.get('migrados', 0)} migrados, {result.get('errores', 0)} errores, {result.get('omitidos', 0)} omitidos.", 'success' if result.get('migrados', 0) > 0 else 'info')
+                else:
+                    flash(f"No se pudo migrar: {result.get('error', 'desconocido')}", 'danger')
 
         return redirect(url_for('ajustes.index'))
 

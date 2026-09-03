@@ -87,3 +87,88 @@ def delete_from_drive(file_id):
         return True
     except Exception:
         return False
+
+
+def migrar_documentos_existentes_a_drive(tenant_id: str | None = None) -> dict:
+    """Migra todos los documentos locales existentes a Drive (cuando se activa Drive).
+
+    Busca DocumentoCliente y DocumentoSiniestro sin drive_id y con archivo local
+    existente, los sube a Drive y guarda el drive_id.
+
+    Si tenant_id es None, migra para todos los tenants (solo superadmin global).
+    Devuelve dict con contadores.
+    """
+    import os
+    from pathlib import Path
+
+    if not is_drive_configured():
+        return {'ok': False, 'error': 'Drive no configurado (falta drive_credentials)'}
+
+    # Respetar GOOGLE_DRIVE_ENABLED si está definido
+    if os.environ.get('GOOGLE_DRIVE_ENABLED', '') not in ('', '1'):
+        # Si está explícitamente a 0, no migrar
+        if os.environ.get('GOOGLE_DRIVE_ENABLED') == '0':
+            return {'ok': False, 'error': 'GOOGLE_DRIVE_ENABLED=0, activa a 1 para migrar'}
+
+    from models import DocumentoCliente, DocumentoSiniestro, db
+    from services.tenant_context import tenant_context
+    from models import Tenant
+
+    # Determinar tenants a migrar
+    if tenant_id:
+        tenants = [db.session.get(Tenant, tenant_id)] if db.session.get(Tenant, tenant_id) else []
+    else:
+        # Global: migrar todos los tenants activos
+        tenants = Tenant.query.filter_by(active=True).all()
+
+    total_ok = 0
+    total_error = 0
+    total_skip = 0
+
+    for tenant in tenants:
+        if not tenant:
+            continue
+        with tenant_context(tenant):
+            # DocumentoCliente
+            docs_cli = DocumentoCliente.query.filter(
+                (DocumentoCliente.drive_id.is_(None) | (DocumentoCliente.drive_id == '')),
+                DocumentoCliente.ruta.isnot(None)
+            ).all()
+            for doc in docs_cli:
+                ruta = doc.ruta
+                if not ruta or not Path(ruta).is_file():
+                    total_skip += 1
+                    continue
+                try:
+                    drive_id = upload_to_drive(ruta, doc.nombre or Path(ruta).name)
+                    if drive_id:
+                        doc.drive_id = drive_id
+                        total_ok += 1
+                    else:
+                        total_error += 1
+                except Exception:
+                    total_error += 1
+
+            # DocumentoSiniestro
+            docs_sin = DocumentoSiniestro.query.filter(
+                (DocumentoSiniestro.drive_id.is_(None) | (DocumentoSiniestro.drive_id == '')),
+                DocumentoSiniestro.ruta.isnot(None)
+            ).all()
+            for doc in docs_sin:
+                ruta = doc.ruta
+                if not ruta or not Path(ruta).is_file():
+                    total_skip += 1
+                    continue
+                try:
+                    drive_id = upload_to_drive(ruta, doc.nombre or Path(ruta).name)
+                    if drive_id:
+                        doc.drive_id = drive_id
+                        total_ok += 1
+                    else:
+                        total_error += 1
+                except Exception:
+                    total_error += 1
+
+            db.session.commit()
+
+    return {'ok': True, 'migrados': total_ok, 'errores': total_error, 'omitidos': total_skip}

@@ -189,14 +189,15 @@ def subir_documento(id):
             except ImportError:
                 pass
 
-        # Upload to Google Drive if configured
+        # Upload to Google Drive if configured (env var o credenciales en BD)
         drive_id = None
-        if os.environ.get('GOOGLE_DRIVE_ENABLED', '') == '1':
-            try:
-                from utils.drive import upload_to_drive
+        try:
+            from utils.drive import is_drive_configured, upload_to_drive
+            # Si GOOGLE_DRIVE_ENABLED es 0, respetar y no subir; si es 1 o no está definido, subir si hay Drive configurado
+            if os.environ.get('GOOGLE_DRIVE_ENABLED', '') != '0' and is_drive_configured():
                 drive_id = upload_to_drive(ruta, filename)
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         doc = DocumentoCliente(
             cliente_id=id,

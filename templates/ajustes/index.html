@@ -122,11 +122,19 @@
                 </div>
                 <button type="submit" class="btn btn-primary btn-sm mt-2" style="background:var(--ocaso-blue)">Guardar Drive</button>
             </form>
+            <form method="POST" class="mt-2">
+                <input type="hidden" name="seccion" value="drive_migrar">
+                <button type="submit" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-cloud-upload me-1"></i> Migrar documentos existentes a Drive
+                </button>
+                <small class="text-muted ms-2">Sube a Drive todos los documentos locales que aún no están en la nube.</small>
+            </form>
             <hr class="my-2">
             <small class="text-muted">
                 <strong>Configuracion:</strong> 1. Crea proyecto en Google Cloud Console. 
                 2. Habilita Drive API. 3. Crea cuenta de servicio. 
                 4. Descarga clave JSON. 5. Comparte carpeta Drive con el email de la cuenta de servicio.
+                <br><em>Al guardar la configuración, los documentos existentes se migran automáticamente si Drive está configurado.</em>
             </small>
         </div>
     </div>

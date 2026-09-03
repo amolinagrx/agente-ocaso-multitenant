@@ -145,11 +145,22 @@ def subir_documento(id):
         filename = f"siniestro_{id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{file.filename}"
         ruta = tenant_upload_path(filename, 'siniestros')
         file.save(ruta)
+
+        drive_id = None
+        try:
+            from utils.drive import is_drive_configured, upload_to_drive
+            import os
+            if os.environ.get('GOOGLE_DRIVE_ENABLED', '') != '0' and is_drive_configured():
+                drive_id = upload_to_drive(ruta, file.filename)
+        except Exception:
+            pass
+
         doc = DocumentoSiniestro(
             siniestro_id=id,
             nombre=file.filename,
             tipo=request.form.get('tipo', 'otro'),
-            ruta=ruta
+            ruta=ruta,
+            drive_id=drive_id
         )
         db.session.add(doc)
         siniestro.fecha_ultima_actualizacion = datetime.utcnow()
