@@ -131,10 +131,32 @@
                 <small class="text-muted ms-2">Sube a Drive todos los documentos locales que aún no están en la nube.</small>
             </form>
             <hr class="my-2">
+            <div class="alert alert-info small py-2">
+                <strong>¿Cuenta personal (Gmail) y te da error de cuota?</strong> El service account no tiene cuota en Gmail personal. Usa <strong>OAuth con tu Gmail</strong>:
+                <ol class="mb-2 mt-1">
+                    <li>En el mismo proyecto de Google Cloud, ve a <strong>APIs y Servicios > Credenciales > Crear credenciales > ID de cliente OAuth</strong> → Tipo <strong>Aplicación web</strong> → Añade origen <code>{{ request.url_root }}</code> y redirección <code>{{ request.url_root.rstrip('/') }}{{ url_for('ajustes.drive_oauth_callback') }}</code></li>
+                    <li>Copia el <strong>Client ID</strong> y <strong>Client Secret</strong> y pégalos abajo, guarda, y luego pulsa <strong>Conectar con Google</strong>.</li>
+                </ol>
+            </div>
+            <form method="POST" class="mb-2">
+                <input type="hidden" name="seccion" value="drive_oauth">
+                <div class="row g-2">
+                    <div class="col-md-6"><label class="form-label small">OAuth Client ID (opcional)</label><input type="text" name="oauth_client_id" class="form-control form-control-sm" value="{{ config.get('drive_oauth_client_id', '') }}" placeholder="xxx.apps.googleusercontent.com"></div>
+                    <div class="col-md-6"><label class="form-label small">OAuth Client Secret (opcional)</label><input type="text" name="oauth_client_secret" class="form-control form-control-sm" value="{{ config.get('drive_oauth_client_secret', '') }}" placeholder="GOCSPX-..."></div>
+                </div>
+                <button type="submit" class="btn btn-outline-secondary btn-sm mt-2">Guardar OAuth</button>
+            </form>
+            <a href="{{ url_for('ajustes.drive_oauth_start') }}" class="btn btn-success btn-sm"><i class="bi bi-google me-1"></i> Conectar con Google (cuenta personal)</a>
+            {% if config.get('drive_oauth_token') %}
+            <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i> Conectado</span>
+            {% else %}
+            <span class="badge bg-secondary ms-2">No conectado</span>
+            {% endif %}
+            <hr class="my-2">
             <small class="text-muted">
-                <strong>Configuracion:</strong> 1. Crea proyecto en Google Cloud Console. 
+                <strong>Configuracion service account (Workspace):</strong> 1. Crea proyecto en Google Cloud Console. 
                 2. Habilita Drive API. 3. Crea cuenta de servicio. 
-                4. Descarga clave JSON. 5. Comparte carpeta Drive con el email de la cuenta de servicio.
+                4. Descarga clave JSON. 5. Comparte carpeta Drive (dentro de una <strong>unidad compartida</strong>) con el email de la cuenta de servicio.
                 <br><em>Al guardar la configuración, los documentos existentes se migran automáticamente si Drive está configurado.</em>
             </small>
         </div>

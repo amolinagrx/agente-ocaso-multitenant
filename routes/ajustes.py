@@ -115,7 +115,7 @@ def index():
             from utils.drive import is_drive_configured, migrar_documentos_existentes_a_drive
             from services.tenant_context import get_current_tenant
             if not is_drive_configured():
-                flash('Google Drive no está configurado. Sube primero el JSON de la cuenta de servicio.', 'warning')
+                flash('Google Drive no está configurado. Conecta tu cuenta personal (OAuth) o sube el JSON de la cuenta de servicio.', 'warning')
             else:
                 tenant = get_current_tenant()
                 tid = tenant.id if tenant else None
@@ -125,7 +125,134 @@ def index():
                 else:
                     flash(f"No se pudo migrar: {result.get('error', 'desconocido')}", 'danger')
 
+        elif seccion == 'drive_oauth':
+            # Guardar client_id/secret si se proporcionan
+            client_id = request.form.get('oauth_client_id', '').strip()
+            client_secret = request.form.get('oauth_client_secret', '').strip()
+            if client_id:
+                _guardar_config('drive_oauth_client_id', client_id)
+            if client_secret:
+                _guardar_config('drive_oauth_client_secret', client_secret)
+            db.session.commit()
+            flash('Credenciales OAuth guardadas. Ahora pulsa "Conectar con Google".', 'success')
+
         return redirect(url_for('ajustes.index'))
+
+
+@ajustes_bp.route('/drive/oauth')
+@login_required
+def drive_oauth_start():
+    from flask import current_app, request
+    from services.tenant_context import get_current_tenant
+    tenant = get_current_tenant()
+    # Guardar tenant para el callback
+    session['drive_oauth_tenant_id'] = tenant.id if tenant else None
+    # Usar credenciales OAuth guardadas o env
+    from models import Configuracion
+    client_id = None
+    client_secret = None
+    # Intentar desde Configuracion
+    for clave in ('drive_oauth_client_id', 'drive_oauth_client_secret'):
+        c = Configuracion.query.filter_by(clave=clave).first()
+        # Necesitamos tenant_context para leer bien, pero ya estamos en tenant_context? Ajustes es por tenant, así que sí
+        pass
+    # Leer de Configuracion dentro de tenant
+    cfg = {c.clave: c.valor for c in Configuracion.query.all()}
+    client_id = cfg.get('drive_oauth_client_id') or os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
+    client_secret = cfg.get('drive_oauth_client_secret') or os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET')
+    if not client_id or not client_secret:
+        flash('Falta Client ID/Secret de OAuth. Configúralos en Ajustes → Drive (sección OAuth) o define GOOGLE_OAUTH_CLIENT_ID/SECRET en el servidor.', 'danger')
+        return redirect(url_for('ajustes.index'))
+    # Construir Flow
+    from google_auth_oauthlib.flow import Flow
+    redirect_uri = request.url_root.rstrip('/') + url_for('ajustes.drive_oauth_callback')
+    # Google requiere https para redirect_uri en producción
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [redirect_uri],
+            }
+        },
+        scopes=['https://www.googleapis.com/auth/drive'],
+        redirect_uri=redirect_uri,
+    )
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        prompt='consent',
+        include_granted_scopes='true'
+    )
+    session['drive_oauth_state'] = state
+    return redirect(authorization_url)
+
+
+@ajustes_bp.route('/drive/oauth/callback')
+@login_required
+def drive_oauth_callback():
+    from flask import request
+    from services.tenant_context import get_current_tenant, tenant_context
+    from models import Tenant
+    state = session.get('drive_oauth_state')
+    tenant_id = session.get('drive_oauth_tenant_id')
+    # Validar state
+    if not state or state != request.args.get('state'):
+        flash('Estado OAuth inválido. Intenta de nuevo.', 'danger')
+        return redirect(url_for('ajustes.index'))
+    # Recuperar tenant
+    tenant = db.session.get(Tenant, tenant_id) if tenant_id else get_current_tenant()
+    if not tenant:
+        # Si no hay tenant (superadmin global), usar el tenant actual o el primero
+        tenant = get_current_tenant()
+        if not tenant:
+            flash('No se pudo determinar la oficina para guardar el token.', 'danger')
+            return redirect(url_for('ajustes.index'))
+    # Intercambiar code por token
+    from models import Configuracion
+    cfg = {c.clave: c.valor for c in Configuracion.query.filter_by(tenant_id=tenant.id).all()} if tenant else {}
+    # Leer client_id/secret del tenant o env
+    # Necesitamos leer dentro de tenant_context
+    with tenant_context(tenant):
+        cfg2 = {c.clave: c.valor for c in Configuracion.query.all()}
+        client_id = cfg2.get('drive_oauth_client_id') or os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
+        client_secret = cfg2.get('drive_oauth_client_secret') or os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET')
+        if not client_id or not client_secret:
+            flash('Falta Client ID/Secret.', 'danger')
+            return redirect(url_for('ajustes.index'))
+        from google_auth_oauthlib.flow import Flow
+        redirect_uri = request.url_root.rstrip('/') + url_for('ajustes.drive_oauth_callback')
+        flow = Flow.from_client_config(
+            {
+                "web": {
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": [redirect_uri],
+                }
+            },
+            scopes=['https://www.googleapis.com/auth/drive'],
+            redirect_uri=redirect_uri,
+            state=state,
+        )
+        try:
+            flow.fetch_token(authorization_response=request.url)
+            creds = flow.credentials
+            # Guardar token
+            token_json = creds.to_json()
+            # Dentro de tenant_context
+            existing = Configuracion.query.filter_by(clave='drive_oauth_token').first()
+            if existing:
+                existing.valor = token_json
+            else:
+                db.session.add(Configuracion(clave='drive_oauth_token', valor=token_json))
+            db.session.commit()
+            flash('¡Conectado con Google Drive! Ahora puedes migrar tus documentos.', 'success')
+        except Exception as e:
+            flash(f'Error al conectar con Google: {e}', 'danger')
+    return redirect(url_for('ajustes.index'))
 
     # Load current config
     config = {}

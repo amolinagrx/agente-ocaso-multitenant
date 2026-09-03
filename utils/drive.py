@@ -10,30 +10,65 @@ SCOPES = ['https://www.googleapis.com/auth/drive']
 
 
 def _get_drive_service():
-    """Build and return Drive service from stored credentials."""
+    """Build and return Drive service from stored credentials.
+
+    Soporta dos modos:
+    1. OAuth personal (recomendado para Gmail personal) — clave drive_oauth_token
+    2. Service account (para Workspace con Shared Drive) — clave drive_credentials
+    """
     from models import Configuracion
-    creds_json = Configuracion.query.filter_by(clave='drive_credentials').first()
+
     folder_id = Configuracion.query.filter_by(clave='drive_folder_id').first()
+    folder = folder_id.valor if folder_id and folder_id.valor else None
 
-    if not creds_json or not creds_json.valor:
-        return None, None
+    # 1. Intentar OAuth personal primero (cuenta personal, sin cuota de service account)
+    oauth_json = Configuracion.query.filter_by(clave='drive_oauth_token').first()
+    if oauth_json and oauth_json.valor:
+        try:
+            from google.oauth2.credentials import Credentials
+            creds_dict = json.loads(oauth_json.valor)
+            creds = Credentials.from_authorized_user_info(creds_dict, scopes=SCOPES)
+            # Refrescar si es necesario
+            if creds and creds.expired and creds.refresh_token:
+                from google.auth.transport.requests import Request
+                creds.refresh(Request())
+                # Guardar el token refrescado
+                oauth_json.valor = creds.to_json()
+                from models import db
+                db.session.commit()
+            service = build('drive', 'v3', credentials=creds)
+            return service, folder
+        except Exception as e:
+            print(f'Drive OAuth init error: {e}')
+            # Fallthrough a service account
 
-    try:
-        creds_dict = json.loads(creds_json.valor)
-        credentials = service_account.Credentials.from_service_account_info(
-            creds_dict, scopes=SCOPES)
-        service = build('drive', 'v3', credentials=credentials)
-        folder = folder_id.valor if folder_id else None
-        return service, folder
-    except (json.JSONDecodeError, Exception) as e:
-        print(f'Drive init error: {e}')
-        return None, None
+    # 2. Service account (Workspace + Shared Drive)
+    creds_json = Configuracion.query.filter_by(clave='drive_credentials').first()
+    if creds_json and creds_json.valor:
+        try:
+            creds_dict = json.loads(creds_json.valor)
+            credentials = service_account.Credentials.from_service_account_info(
+                creds_dict, scopes=SCOPES)
+            service = build('drive', 'v3', credentials=credentials)
+            return service, folder
+        except (json.JSONDecodeError, Exception) as e:
+            print(f'Drive service account init error: {e}')
+            return None, None
+
+    return None, None
 
 
 def is_drive_configured():
-    """Check if Google Drive is configured."""
+    """Check if Google Drive is configured (OAuth o service account)."""
     s, f = _get_drive_service()
     return s is not None
+
+
+def is_drive_oauth_configured():
+    """Check if Drive OAuth personal está configurado."""
+    from models import Configuracion
+    oauth = Configuracion.query.filter_by(clave='drive_oauth_token').first()
+    return bool(oauth and oauth.valor)
 
 
 def upload_to_drive(filepath, filename, folder_id=None):
