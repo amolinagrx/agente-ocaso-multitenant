@@ -5,11 +5,10 @@ from flask_login import LoginManager, current_user, logout_user
 from models import db, User
 
 
-def global_login_url():
-    """URL del login global (sin tenant), para cambiar de oficina."""
+def _global_url(endpoint, **values):
     from flask import request, url_for
 
-    target = url_for('auth.login')
+    target = url_for(endpoint, **values)
     script_root = request.script_root or ''
     if script_root and script_root != '/':
         target = target[len(script_root):] or '/'
@@ -20,9 +19,15 @@ def global_login_url():
     return target
 
 
+def global_login_url():
+    """URL del login global (sin tenant), para cambiar de oficina."""
+    return _global_url('auth.login')
+
+
 def create_app(run_startup_tasks=True):
     app = Flask(__name__)
     app.jinja_env.globals['global_login_url'] = global_login_url
+    app.jinja_env.globals['global_url_for'] = _global_url
 
     @app.context_processor
     def inject_globals():
