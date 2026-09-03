@@ -104,12 +104,6 @@ def migrar_documentos_existentes_a_drive(tenant_id: str | None = None) -> dict:
     if not is_drive_configured():
         return {'ok': False, 'error': 'Drive no configurado (falta drive_credentials)'}
 
-    # Respetar GOOGLE_DRIVE_ENABLED si está definido
-    if os.environ.get('GOOGLE_DRIVE_ENABLED', '') not in ('', '1'):
-        # Si está explícitamente a 0, no migrar
-        if os.environ.get('GOOGLE_DRIVE_ENABLED') == '0':
-            return {'ok': False, 'error': 'GOOGLE_DRIVE_ENABLED=0, activa a 1 para migrar'}
-
     from models import DocumentoCliente, DocumentoSiniestro, db
     from services.tenant_context import tenant_context
     from models import Tenant

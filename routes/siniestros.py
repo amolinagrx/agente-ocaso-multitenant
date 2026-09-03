@@ -149,8 +149,7 @@ def subir_documento(id):
         drive_id = None
         try:
             from utils.drive import is_drive_configured, upload_to_drive
-            import os
-            if os.environ.get('GOOGLE_DRIVE_ENABLED', '') != '0' and is_drive_configured():
+            if is_drive_configured():
                 drive_id = upload_to_drive(ruta, file.filename)
         except Exception:
             pass
