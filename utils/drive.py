@@ -6,7 +6,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+SCOPES = ['https://www.googleapis.com/auth/drive']
 
 
 def _get_drive_service():
@@ -50,7 +50,8 @@ def upload_to_drive(filepath, filename, folder_id=None):
     try:
         media = MediaFileUpload(filepath, resumable=True)
         drive_file = service.files().create(
-            body=file_metadata, media_body=media, fields='id'
+            body=file_metadata, media_body=media, fields='id',
+            supportsAllDrives=True
         ).execute()
         return drive_file.get('id')
     except Exception as e:
@@ -83,7 +84,7 @@ def delete_from_drive(file_id):
     if not service:
         return False
     try:
-        service.files().delete(fileId=file_id).execute()
+        service.files().delete(fileId=file_id, supportsAllDrives=True).execute()
         return True
     except Exception:
         return False
