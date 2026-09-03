@@ -7,7 +7,31 @@
         <h1>Oficinas</h1>
         <p>Crea y gestiona los espacios independientes de cada empresa.</p>
     </div>
+    <div class="d-flex gap-2 align-items-center">
+        <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importTenantModal">
+            <i class="bi bi-upload me-1"></i>Importar oficina
+        </button>
+    </div>
 </header>
+
+<!-- Modal Importar Oficina -->
+<div class="modal fade" id="importTenantModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form id="importTenantForm" enctype="multipart/form-data">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Importar oficina completa</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="alert alert-info small"><i class="bi bi-info-circle me-1"></i> Importa un <code>.zip</code> exportado desde otra oficina. Se creará una oficina nueva con todos sus datos y archivos.</div>
+                    <div class="mb-3"><label class="form-label">Archivo .zip de oficina</label><input class="form-control" type="file" name="file" accept=".zip" required></div>
+                    <div class="mb-3"><label class="form-label">Nuevo identificador (opcional)</label><input class="form-control" name="subdomain" pattern="[a-z0-9-]+" placeholder="Dejar vacío para usar el del archivo"><small class="form-text text-muted">Si se deja vacío, se usa el del archivo. Debe ser único.</small></div>
+                    <div class="mb-3"><label class="form-label">Nuevo nombre (opcional)</label><input class="form-control" name="name" placeholder="Dejar vacío para usar el del archivo"></div>
+                    <div id="importTenantMessage" class="small mt-2"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Importar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
 
 <div class="card surface-card mb-4">
     <div class="card-header surface-card-header">
@@ -42,6 +66,9 @@
                 <td><span class="badge bg-{{ 'success' if tenant.active else 'secondary' }}">{{ 'Activo' if tenant.active else 'Inactivo' }}</span></td>
                 <td>{{ tenant.created_at.strftime('%d/%m/%Y') if tenant.created_at else '-' }}</td>
                 <td class="text-end">
+                    <a href="{{ url_for('admin.export_tenant', tenant_id=tenant.id) }}" class="btn btn-sm btn-outline-secondary" title="Exportar oficina completa">
+                        <i class="bi bi-download"></i> Exportar
+                    </a>
                     {% if tenant.active %}
                     <form method="POST" action="{{ url_for('admin.switch_tenant', tenant_id=tenant.id) }}" class="d-inline">
                         <button class="btn btn-sm btn-outline-primary">Abrir</button>
@@ -78,6 +105,23 @@ document.querySelectorAll('.toggle-tenant').forEach(function (button) {
         });
         if (response.ok) window.location.reload();
     });
+});
+document.getElementById('importTenantForm').addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const msg = document.getElementById('importTenantMessage');
+    msg.textContent = 'Importando...';
+    msg.className = 'small mt-2 text-muted';
+    const fd = new FormData(this);
+    const response = await fetch('{{ url_for('admin.import_tenant') }}', { method: 'POST', body: fd });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+        msg.textContent = 'Oficina importada correctamente.';
+        msg.className = 'small mt-2 text-success';
+        setTimeout(() => window.location.reload(), 900);
+    } else {
+        msg.textContent = data.error || 'No se pudo importar la oficina.';
+        msg.className = 'small mt-2 text-danger';
+    }
 });
 </script>
 {% endblock %}
