@@ -65,14 +65,28 @@ def ocr_dni():
                     text += t + "\n"
             except Exception:
                 text = ""
-            # Si PDF no tiene texto (escaneado), intentar OCR a imagen
+            # Si PDF no tiene texto (escaneado), renderizar a imagen y OCR
             if not text.strip():
                 try:
-                    import pytesseract
+                    from pdf2image import convert_from_path
                     from PIL import Image
-                    # pdf -> imagen no implementado sin poppler; devolver texto vacío para que regex falle y se use fallback
+                    import pytesseract
+                    # Renderizar primera página a imagen (300 DPI)
+                    images = convert_from_path(tmp_path, dpi=300, first_page=1, last_page=1)
+                    if images:
+                        im = images[0]
+                        if im.mode in ('RGBA', 'P'):
+                            im = im.convert('RGB')
+                        try:
+                            text = pytesseract.image_to_string(im, lang='spa+eng')
+                        except Exception:
+                            text = pytesseract.image_to_string(im)
+                except ImportError:
+                    # pdf2image no disponible, dejar texto vacío para fallback
                     pass
-                except Exception:
+                except Exception as e:
+                    # No bloquear, dejar que regex falle y se use AI fallback
+                    print(f"PDF OCR error: {e}")
                     pass
         else:
             try:
