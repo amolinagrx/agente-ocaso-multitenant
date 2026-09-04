@@ -35,6 +35,111 @@ def index():
                            buscar=buscar)
 
 
+@clientes_bp.route('/ocr-dni', methods=['POST'])
+@login_required
+def ocr_dni():
+    """OCR para DNI/NIE arrastrado. Devuelve JSON con datos extraídos."""
+    file = request.files.get('documento') or request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({'error': 'Ningún archivo'}), 400
+    filename = file.filename.lower()
+    if not filename.endswith(('.pdf', '.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif')):
+        return jsonify({'error': 'Formato no soportado (usa PDF o imagen)'}), 400
+
+    # Guardar temporal y extraer texto
+    import tempfile, os, re
+    from pathlib import Path
+    suffix = Path(filename).suffix or '.pdf'
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        file.save(tmp.name)
+        tmp_path = tmp.name
+
+    text = ""
+    try:
+        if filename.endswith('.pdf'):
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(tmp_path)
+                for page in reader.pages:
+                    t = page.extract_text() or ""
+                    text += t + "\n"
+            except Exception:
+                text = ""
+            # Si PDF no tiene texto (escaneado), intentar OCR a imagen
+            if not text.strip():
+                try:
+                    import pytesseract
+                    from PIL import Image
+                    # pdf -> imagen no implementado sin poppler; devolver texto vacío para que regex falle y se use fallback
+                    pass
+                except Exception:
+                    pass
+        else:
+            try:
+                import pytesseract
+                from PIL import Image
+                im = Image.open(tmp_path)
+                # Preprocesar para DNI: escala grises
+                if im.mode in ('RGBA', 'P'):
+                    im = im.convert('RGB')
+                # OCR con español
+                try:
+                    text = pytesseract.image_to_string(im, lang='spa+eng')
+                except Exception:
+                    text = pytesseract.image_to_string(im)
+            except ImportError:
+                return jsonify({'error': 'OCR no disponible en el servidor (falta Tesseract)'}), 500
+            except Exception as e:
+                return jsonify({'error': f'Error OCR: {e}'}), 500
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+    # Parsear DNI/NIE, nombre, etc. con regex simple
+    data = {}
+    # DNI: 8 dígitos + letra, NIE: X/Y/Z + 7 dígitos + letra
+    m = re.search(r'\b(\d{8}[A-Z]|[XYZ]\d{7}[A-Z])\b', text.upper())
+    if m:
+        data['dni'] = m.group(1)
+    # Intentar nombre: línea con APELLIDOS o NOMBRE
+    # DNI español tiene "APELLIDOS" y "NOMBRE" en líneas separadas
+    # Regex para nombre completo: dos líneas con mayúsculas
+    # Simplificado: buscar 2-4 palabras en mayúsculas consecutivas
+    # Usar AI si está configurado para mejor parsing
+    try:
+        from utils.ai import _get_api_key
+        if _get_api_key():
+            from utils.ai import chat_with_context
+            prompt = f"Extrae del siguiente texto de DNI español los campos JSON: nombre_completo, dni, direccion, codigo_postal, poblacion, provincia, fecha_nacimiento (YYYY-MM-DD). Texto:\n{text[:3000]}\n\nResponde solo JSON válido, sin explicaciones."
+            resp = chat_with_context([{'role': 'user', 'content': prompt}], None, '', '')
+            import json as js
+            # Intentar extraer JSON del texto
+            import re as re2
+            jm = re2.search(r'\{{.*\}}', resp, re.DOTALL)
+            if jm:
+                parsed = js.loads(jm.group(0))
+                for k in ('nombre_completo', 'dni', 'direccion', 'codigo_postal', 'poblacion', 'provincia', 'fecha_nacimiento'):
+                    if parsed.get(k):
+                        data[k if k != 'nombre_completo' else 'nombre'] = str(parsed[k]).strip()
+    except Exception:
+        pass
+
+    # Fallback regex para direccion si no usó AI
+    if 'direccion' not in data:
+        # Buscar línea con C/ o Avda.
+        m2 = re.search(r'(C\/[^\n]+|Avda[^\n]+|Calle[^\n]+)', text, re.IGNORECASE)
+        if m2:
+            data['direccion'] = m2.group(1).strip()[:200]
+    if 'codigo_postal' not in data:
+        m3 = re.search(r'\b(\d{5})\b', text)
+        if m3:
+            data['codigo_postal'] = m3.group(1)
+
+    return jsonify({'text': text[:2000], 'data': data})
+
+
 @clientes_bp.route('/nuevo', methods=['GET', 'POST'])
 @login_required
 def nuevo():
@@ -53,6 +158,37 @@ def nuevo():
         )
         db.session.add(cliente)
         db.session.commit()
+
+        # Si se arrastró un DNI, guardarlo también en documentación
+        dni_file = request.files.get('dni_file')
+        if dni_file and dni_file.filename:
+            try:
+                from services.storage import tenant_upload_path
+                from models import DocumentoCliente
+                from datetime import datetime as dt
+                filename = f"dni_{cliente.id}_{dt.utcnow().strftime('%Y%m%d%H%M%S%f')}_{dni_file.filename}"
+                ruta = tenant_upload_path(filename, 'clientes')
+                dni_file.save(ruta)
+                # Drive si está configurado
+                drive_id = None
+                try:
+                    from utils.drive import is_drive_configured, upload_to_drive
+                    if is_drive_configured():
+                        drive_id = upload_to_drive(ruta, filename)
+                except Exception:
+                    pass
+                doc = DocumentoCliente(
+                    cliente_id=cliente.id,
+                    nombre=filename,
+                    tipo='dni',
+                    ruta=ruta,
+                    drive_id=drive_id
+                )
+                db.session.add(doc)
+                db.session.commit()
+            except Exception:
+                pass
+
         flash('Cliente creado correctamente', 'success')
         return redirect(url_for('clientes.ficha', id=cliente.id))
     return render_template('clientes/nuevo.html')

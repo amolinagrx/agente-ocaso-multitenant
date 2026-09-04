@@ -8,7 +8,15 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-body">
-                <form method="POST">
+                <!-- Zona arrastrar DNI -->
+                <div id="dniDropZone" class="border border-2 border-dashed rounded p-3 text-center mb-3" style="border-color: var(--border-subtle) !important; background: var(--surface-soft);">
+                    <i class="bi bi-person-vcard fs-3 text-muted"></i>
+                    <p class="mb-1 small text-muted">Arrastra el DNI aquí (PDF, JPG) para rellenar automáticamente</p>
+                    <small class="text-muted">o usa el formulario manual</small>
+                    <div id="dniOcrStatus" class="small mt-2"></div>
+                </div>
+                <form method="POST" enctype="multipart/form-data" id="nuevoClienteForm">
+                    <input type="file" name="dni_file" id="dniFileInput" accept=".pdf,.jpg,.jpeg,.png,.webp,.bmp,.tiff,.tif" style="display:none">
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Nombre completo *</label>
@@ -110,6 +118,100 @@
             document.getElementById('provinciaInput').value = found.provincia;
         }
     };
+})();
+
+// --- DNI OCR arrastrar ---
+(function(){
+    const zone = document.getElementById('dniDropZone');
+    const fileInput = document.getElementById('dniFileInput');
+    const status = document.getElementById('dniOcrStatus');
+    const form = document.getElementById('nuevoClienteForm');
+    let pendingFile = null;
+
+    function setStatus(msg, cls) {
+        if (!status) return;
+        status.textContent = msg;
+        status.className = 'small mt-2 ' + (cls || 'text-muted');
+    }
+
+    function fillForm(data) {
+        if (!data) return;
+        const map = {
+            'nombre': 'input[name=\"nombre\"]',
+            'dni': 'input[name=\"dni\"]',
+            'direccion': 'input[name=\"direccion\"]',
+            'codigo_postal': '#cpInput',
+            'poblacion': '#poblacionInput',
+            'provincia': '#provinciaInput',
+            'fecha_nacimiento': 'input[name=\"fecha_nacimiento\"]'
+        };
+        Object.keys(map).forEach(k => {
+            if (data[k]) {
+                const el = document.querySelector(map[k]);
+                if (el) {
+                    el.value = data[k];
+                    el.dispatchEvent(new Event('input', {bubbles:true}));
+                    el.dispatchEvent(new Event('change', {bubbles:true}));
+                }
+            }
+        });
+        // Si hay CP, disparar autocompletado
+        if (data.codigo_postal) autoFillFromCP();
+        if (data.poblacion) autoFillFromPoblacion();
+    }
+
+    async function handleFile(file) {
+        if (!file) return;
+        const isPdfOrImg = file.type === 'application/pdf' || file.type.startsWith('image/') || /\.(pdf|jpe?g|png|webp|bmp|tiff?)$/i.test(file.name);
+        if (!isPdfOrImg) {
+            setStatus('Formato no soportado. Usa PDF o imagen del DNI.', 'text-danger');
+            return;
+        }
+        // Guardar para el submit final
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        pendingFile = file;
+
+        setStatus('Leyendo DNI con OCR...', 'text-muted');
+        zone.classList.add('border-primary');
+
+        const fd = new FormData();
+        fd.append('documento', file);
+        try {
+            const resp = await fetch('{{ url_for('clientes.ocr_dni') }}', { method: 'POST', body: fd });
+            const j = await resp.json();
+            if (!resp.ok) throw new Error(j.error || 'Error OCR');
+            fillForm(j.data || {});
+            const n = Object.keys(j.data || {}).length;
+            if (n > 0) {
+                setStatus('Datos extraídos (' + n + ' campos). Revisa y pulsa Crear Cliente. El DNI se guardará en Documentación.', 'text-success');
+            } else {
+                setStatus('No se pudo extraer datos automáticamente. Rellena manualmente. El DNI se guardará igualmente.', 'text-warning');
+            }
+            // Mostrar texto OCR para depuración si hay
+            if (j.text) console.log('OCR text:', j.text.substring(0, 500));
+        } catch (e) {
+            setStatus('Error OCR: ' + e.message + '. Rellena manualmente.', 'text-danger');
+        } finally {
+            zone.classList.remove('border-primary');
+        }
+    }
+
+    if (zone) {
+        ['dragenter', 'dragover'].forEach(ev => {
+            zone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); zone.classList.add('border-primary', 'bg-light'); });
+        });
+        ['dragleave', 'drop'].forEach(ev => {
+            zone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); zone.classList.remove('border-primary', 'bg-light'); });
+        });
+        zone.addEventListener('drop', e => {
+            const files = e.dataTransfer.files;
+            if (files.length) handleFile(files[0]);
+        });
+        zone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+    }
 })();
 </script>
 
