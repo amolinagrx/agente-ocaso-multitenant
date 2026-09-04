@@ -111,47 +111,130 @@ def ocr_dni():
         except Exception:
             pass
 
-    # Parsear DNI/NIE, nombre, etc. con regex simple
+    # Parsear DNI español (formato DNIe)
     data = {}
+    upper = text.upper()
+
     # DNI: 8 dígitos + letra, NIE: X/Y/Z + 7 dígitos + letra
-    m = re.search(r'\b(\d{8}[A-Z]|[XYZ]\d{7}[A-Z])\b', text.upper())
+    m = re.search(r'\b(\d{8}[A-Z]|[XYZ]\d{7}[A-Z])\b', upper)
     if m:
         data['dni'] = m.group(1)
-    # Intentar nombre: línea con APELLIDOS o NOMBRE
-    # DNI español tiene "APELLIDOS" y "NOMBRE" en líneas separadas
-    # Regex para nombre completo: dos líneas con mayúsculas
-    # Simplificado: buscar 2-4 palabras en mayúsculas consecutivas
-    # Usar AI si está configurado para mejor parsing
+
+    # Nombre y apellidos: buscar tras etiquetas APELLIDOS / NOMBRE
+    # DNIe layout: "APELLIDOS\nGARCIA LOPEZ\nNOMBRE\nJUAN"
+    for label, key in [('APELLIDOS', 'apellidos'), ('NOMBRE', 'nombre')]:
+        # Buscar label y capturar siguiente línea con letras
+        pat = rf'{label}\s*[:\-]?\s*\n\s*([A-ZÁÉÍÓÚÑ\s\-]+)'
+        mm = re.search(pat, upper)
+        if mm:
+            val = mm.group(1).strip().title()
+            # Limpiar: solo letras y espacios, 2-40 chars
+            val = re.sub(r'[^A-Za-zÁÉÍÓÚÑáéíóúñ\s\-]', '', val).strip()
+            if 2 < len(val) < 50:
+                data[key] = val
+    # Combinar apellidos + nombre para campo nombre completo
+    if 'apellidos' in data or 'nombre' in data:
+        full = f"{data.pop('apellidos', '')} {data.get('nombre', '')}".strip()
+        if full:
+            data['nombre'] = re.sub(r'\s+', ' ', full).strip()
+    else:
+        # Fallback: buscar 2-3 palabras en mayúsculas que parezcan nombre
+        # Evitar palabras comunes del DNI como "ESPAÑA", "DNI", "NACIMIENTO"
+        candidates = re.findall(r'\b([A-ZÁÉÍÓÚÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÑ]{2,}){1,3})\b', upper)
+        blacklist = {'ESPAÑA', 'DOCUMENTO', 'NACIONAL', 'IDENTIDAD', 'APELLIDOS', 'NOMBRE', 'SEXO', 'NACIMIENTO', 'DOMICILIO', 'LUGAR', 'NACIMIENTO', 'PROVINCIA', 'LOCALIDAD'}
+        for cand in candidates:
+            words = cand.split()
+            if len(words) >= 2 and not any(w in blacklist for w in words):
+                # Probable nombre
+                data['nombre'] = cand.title()
+                break
+
+    # Fecha nacimiento: DD/MM/YYYY o DD-MM-YYYY o YYYY-MM-DD
+    if 'fecha_nacimiento' not in data:
+        for pat in (r'\b(\d{2})[\/\-](\d{2})[\/\-](\d{4})\b', r'\b(\d{4})[\/\-](\d{2})[\/\-](\d{2})\b'):
+            mm = re.search(pat, text)
+            if mm:
+                try:
+                    if len(mm.group(1)) == 4:  # YYYY-MM-DD
+                        y, m2, d = mm.group(1), mm.group(2), mm.group(3)
+                    else:
+                        d, m2, y = mm.group(1), mm.group(2), mm.group(3)
+                    # Validar fecha razonable (1900-2010 para nacimiento)
+                    if 1900 <= int(y) <= 2010 and 1 <= int(m2) <= 12 and 1 <= int(d) <= 31:
+                        data['fecha_nacimiento'] = f"{y}-{m2.zfill(2)}-{d.zfill(2)}"
+                        break
+                except Exception:
+                    pass
+
+    # Domicilio: buscar tras DOMICILIO
+    if 'direccion' not in data:
+        for label in ('DOMICILIO', 'DIRECCION'):
+            pat = rf'{label}\s*[:\-]?\s*\n?\s*([^\n]+)'
+            mm = re.search(pat, upper)
+            if mm:
+                val = mm.group(1).strip()
+                # Limpiar prefijos como "C/", "AVDA"
+                val = re.sub(r'^(C\/|AVDA\.?|CALLE)\s*', '', val, flags=re.IGNORECASE).strip()
+                if len(val) > 5:
+                    data['direccion'] = val.title()[:200]
+                    break
+        if 'direccion' not in data:
+            m2 = re.search(r'(C\/[^\n]{5,80}|AVDA[^\n]{5,80}|CALLE[^\n]{5,80})', text, re.IGNORECASE)
+            if m2:
+                data['direccion'] = m2.group(1).strip()[:200].title()
+
+    # Código postal: 5 dígitos, a menudo cerca de LOCALIDAD/PROVINCIA
+    if 'codigo_postal' not in data:
+        # Buscar CP cerca de "C.P." ostandalone
+        m3 = re.search(r'\b(\d{5})\b', text)
+        if m3:
+            cp = m3.group(1)
+            # Validar CP español (01-52)
+            if cp.startswith(('01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45','46','47','48','49','50','51','52')):
+                data['codigo_postal'] = cp
+
+    # Población y provincia: buscar tras LOCALIDAD/PROVINCIA o usar CP
+    if 'poblacion' not in data or 'provincia' not in data:
+        for label, key in [('LOCALIDAD', 'poblacion'), ('PROVINCIA', 'provincia'), ('LUGAR DE NACIMIENTO', 'poblacion')]:
+            pat = rf'{label}\s*[:\-]?\s*\n?\s*([A-ZÁÉÍÓÚÑ\s\-]+)'
+            mm = re.search(pat, upper)
+            if mm and key not in data:
+                val = mm.group(1).strip().title()
+                val = re.sub(r'[^A-Za-zÁÉÍÓÚÑáéíóúñ\s\-]', '', val).strip()
+                if 2 < len(val) < 40:
+                    data[key] = val
+
+    # Intentar mejorar con AI si está configurado (sobrescribe si AI da más campos)
     try:
         from utils.ai import _get_api_key
         if _get_api_key():
             from utils.ai import chat_with_context
-            prompt = f"Extrae del siguiente texto de DNI español los campos JSON: nombre_completo, dni, direccion, codigo_postal, poblacion, provincia, fecha_nacimiento (YYYY-MM-DD). Texto:\n{text[:3000]}\n\nResponde solo JSON válido, sin explicaciones."
+            prompt = (
+                "Eres un experto en DNI español. Extrae del siguiente texto OCR de un DNI los campos JSON: "
+                "nombre_completo, dni, direccion, codigo_postal, poblacion, provincia, fecha_nacimiento (YYYY-MM-DD). "
+                "El DNI tiene formato APELLIDOS, NOMBRE, DOMICILIO, etc. "
+                f"Texto OCR:\n{text[:3000]}\n\n"
+                "Responde SOLO JSON válido sin explicaciones, ejemplo: {\"nombre_completo\": \"Juan Garcia Lopez\", \"dni\": \"12345678Z\", ...}"
+            )
             resp = chat_with_context([{'role': 'user', 'content': prompt}], None, '', '')
             import json as js
-            # Intentar extraer JSON del texto
             import re as re2
-            jm = re2.search(r'\{{.*\}}', resp, re.DOTALL)
+            jm = re2.search(r'\{[^{}]*\{[^{}]*\}[^{}]*\}|\{[^{}]*\}', resp, re.DOTALL)
+            if not jm:
+                jm = re2.search(r'\{.*\}', resp, re.DOTALL)
             if jm:
                 parsed = js.loads(jm.group(0))
                 for k in ('nombre_completo', 'dni', 'direccion', 'codigo_postal', 'poblacion', 'provincia', 'fecha_nacimiento'):
-                    if parsed.get(k):
+                    if parsed.get(k) and str(parsed[k]).strip() and str(parsed[k]).lower() not in ('null', 'none', ''):
                         data[k if k != 'nombre_completo' else 'nombre'] = str(parsed[k]).strip()
     except Exception:
         pass
 
-    # Fallback regex para direccion si no usó AI
-    if 'direccion' not in data:
-        # Buscar línea con C/ o Avda.
-        m2 = re.search(r'(C\/[^\n]+|Avda[^\n]+|Calle[^\n]+)', text, re.IGNORECASE)
-        if m2:
-            data['direccion'] = m2.group(1).strip()[:200]
-    if 'codigo_postal' not in data:
-        m3 = re.search(r'\b(\d{5})\b', text)
-        if m3:
-            data['codigo_postal'] = m3.group(1)
+    # Normalizar nombre a Title Case
+    if 'nombre' in data:
+        data['nombre'] = ' '.join(w.capitalize() for w in data['nombre'].split())
 
-    return jsonify({'text': text[:2000], 'data': data})
+    return jsonify({'text': text[:3000], 'data': data, 'raw_upper': upper[:500]})
 
 
 @clientes_bp.route('/nuevo', methods=['GET', 'POST'])
