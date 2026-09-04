@@ -283,7 +283,7 @@
     <div class="tab-pane fade" id="documentos">
         <form method="POST" action="{{ url_for('clientes.subir_documento', id=cliente.id) }}" enctype="multipart/form-data" class="row g-2 mb-3" id="uploadForm">
             <div class="col-md-2">
-                <select name="tipo" class="form-select form-select-sm">
+                <select name="tipo" id="tipoSelect" class="form-select form-select-sm">
                     <option value="poliza">Poliza</option>
                     <option value="dni">DNI</option>
                     <option value="certificado">Certificado</option>
@@ -315,6 +315,36 @@
                 <small id="scanStatus" class="text-muted ms-2"></small>
             </div>
         </form>
+
+        <!-- Zona arrastrar PDF -->
+        <div id="dropZone" class="border border-2 border-dashed rounded p-4 text-center mb-3" style="border-color: var(--border-subtle) !important; background: var(--surface-soft);">
+            <i class="bi bi-cloud-arrow-up fs-3 text-muted"></i>
+            <p class="mb-1 small text-muted">Arrastra un PDF aquí desde cualquier carpeta</p>
+            <small class="text-muted">o usa "Subir" / "Escanear"</small>
+        </div>
+
+        <!-- Modal tipo para arrastrar -->
+        <div class="modal fade" id="dropTipoModal" tabindex="-1">
+            <div class="modal-dialog modal-sm">
+                <div class="modal-content">
+                    <div class="modal-header"><h6 class="modal-title">Tipo de documento</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-body">
+                        <p class="small text-muted mb-2">Has arrastrado <strong id="dropFileName"></strong>. Elige el tipo antes de subir:</p>
+                        <select id="dropTipoSelect" class="form-select form-select-sm">
+                            <option value="poliza">Poliza</option>
+                            <option value="dni">DNI</option>
+                            <option value="certificado">Certificado</option>
+                            <option value="escaneo">Escaneo</option>
+                            <option value="otro" selected>Otro</option>
+                        </select>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm" style="background:var(--ocaso-blue)" onclick="confirmarDropUpload()">Subir</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Modal Ayuda Brother ADS-1300 (solo si el agente no esta instalado) -->
         <div class="modal fade" id="brotherHelpModal" tabindex="-1">
@@ -855,6 +885,52 @@ async function escanearConBrother() {
         btn.innerHTML = orig;
         setTimeout(() => { if (status.className.includes('text-success')) { status.textContent = ''; status.className = 'text-muted small ms-2'; } }, 7000);
     }
+}
+
+// ---- Drag & Drop PDF ----
+let dropFile = null;
+const dropZone = document.getElementById('dropZone');
+const dropModal = document.getElementById('dropTipoModal');
+if (dropZone) {
+    ['dragenter', 'dragover'].forEach(ev => {
+        dropZone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('border-primary', 'bg-light'); });
+    });
+    ['dragleave', 'drop'].forEach(ev => {
+        dropZone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('border-primary', 'bg-light'); });
+    });
+    dropZone.addEventListener('drop', e => {
+        const files = e.dataTransfer.files;
+        if (!files.length) return;
+        const pdf = Array.from(files).find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+        const file = pdf || files[0];
+        if (!file) return;
+        dropFile = file;
+        document.getElementById('dropFileName').textContent = file.name;
+        // Sincronizar tipo actual
+        const curTipo = document.getElementById('tipoSelect').value;
+        document.getElementById('dropTipoSelect').value = curTipo;
+        new bootstrap.Modal(dropModal).show();
+    });
+    // También permitir arrastrar sobre toda la pestaña documentos
+    const docPane = document.getElementById('documentos');
+    if (docPane) {
+        docPane.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-primary'); });
+        docPane.addEventListener('dragleave', e => { if (!docPane.contains(e.relatedTarget)) dropZone.classList.remove('border-primary'); });
+    }
+}
+function confirmarDropUpload() {
+    if (!dropFile) return;
+    const tipo = document.getElementById('dropTipoSelect').value;
+    // Sincronizar tipo del formulario principal
+    document.getElementById('tipoSelect').value = tipo;
+    const dt = new DataTransfer();
+    dt.items.add(dropFile);
+    document.getElementById('fileInput').files = dt.files;
+    document.getElementById('fileName').textContent = dropFile.name + ' (' + (dropFile.size/1024).toFixed(0) + ' KB) — listo para Subir';
+    bootstrap.Modal.getInstance(dropModal).hide();
+    dropFile = null;
+    // Opcional: hacer submit automático tras elegir tipo
+    // document.getElementById('uploadForm').submit();
 }
 </script>
 
